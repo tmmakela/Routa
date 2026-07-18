@@ -6,7 +6,7 @@
 <title>ROUTA — winter synth</title>
 <!--
   ============================================================
-  ROUTA v0.7.0 — Jääportit-style browser synth
+  ROUTA v0.7.1 — Jääportit-style browser synth
   ============================================================
   HANDOFF (read first in a new session):
   >> See HANDOFF.md in the repo root for the full continuity
@@ -133,8 +133,18 @@
   - Library grown to 23: LEADS+Kaiho (glide), BASS+Karhu/Jyrä
     (unison), PAD+Myrsky/Usva (supersaw/soft unison),
     KEYS+Tuisku; Ukko & Tulikettu upgraded to real supersaws.
-
-  NEXT (ideas)
+  v0.7.1 MODERN LOOK & FEEL
+  - Every knob now has a value RING: an SVG 270° arc (matches
+    the indicator sweep) that fills with the value. makeKnob
+    injects <svg.ring> (rtrack + rval); render() sets rval
+    stroke-dasharray = norm*ARC (ARC=0.75*2πr, r=15). Reads
+    the value at a glance (Vital/Serum style).
+  - Micro-interactions: knob lifts + glows while dragging
+    (.grab class on pointerdown/up), ring track brightens on
+    hover; modules highlight on hover; wave buttons lift on
+    hover; keys glow when held; POWER gently pulses until the
+    engine is booted (@keyframes powerPulse, off once .on;
+    respects prefers-reduced-motion).
   - Save sequence into preset JSON (now synth params only)
   - WAV capture (MediaRecorder from master)
   - AudioWorklet drive/foldback for grit
@@ -171,8 +181,15 @@
   .badge{color:var(--dim);font-size:9px;letter-spacing:.15em}
   #power{font:inherit;font-size:10px;letter-spacing:.15em;
     background:transparent;color:var(--ice);border:1px solid var(--ice);
-    border-radius:3px;padding:6px 12px;cursor:pointer}
-  #power.on{color:var(--night);background:var(--ice)}
+    border-radius:3px;padding:6px 12px;cursor:pointer;
+    transition:background .18s ease,color .18s ease,box-shadow .18s ease;
+    animation:powerPulse 2.2s ease-in-out infinite}
+  #power:hover{background:rgba(127,212,232,.12)}
+  #power.on{color:var(--night);background:var(--ice);animation:none}
+  @keyframes powerPulse{
+    0%,100%{box-shadow:0 0 0 0 rgba(127,212,232,.0)}
+    50%{box-shadow:0 0 14px 1px rgba(127,212,232,.45)}}
+  @media (prefers-reduced-motion:reduce){#power{animation:none}}
   #masterSlot{display:flex;gap:0}
 
   /* ---------- preset library ---------- */
@@ -221,15 +238,22 @@
   main{width:100%;max-width:1060px;padding:0 12px;
     display:flex;flex-wrap:wrap;gap:6px;justify-content:center}
   .mod{background:var(--panel);border:1px solid var(--edge);
-    border-radius:5px;padding:8px 8px 6px;flex:1 1 auto;max-width:100%}
+    border-radius:5px;padding:8px 8px 6px;flex:1 1 auto;max-width:100%;
+    transition:border-color .18s ease,box-shadow .18s ease}
+  .mod:hover{border-color:#2b3f53;box-shadow:0 0 0 1px rgba(127,212,232,.04)}
   .mod h2{font-family:'Fjalla One',sans-serif;font-size:10px;
     letter-spacing:.22em;color:var(--dim);margin-bottom:6px;
     border-bottom:1px solid var(--edge);padding-bottom:4px}
   .btnrow{display:flex;gap:3px;margin-bottom:5px;justify-content:center}
   .wbtn{background:var(--night);border:1px solid var(--edge);border-radius:3px;
     padding:3px 6px;cursor:pointer;display:flex;align-items:center;justify-content:center;
-    color:var(--dim);font:inherit;font-size:8px;letter-spacing:.08em}
-  .wbtn svg{display:block;stroke:var(--dim);fill:none;stroke-width:1.6;stroke-linecap:round}
+    color:var(--dim);font:inherit;font-size:8px;letter-spacing:.08em;
+    transition:border-color .12s,color .12s,transform .08s}
+  .wbtn:hover{border-color:#31485c;color:var(--frost);transform:translateY(-1px)}
+  .wbtn:hover svg{stroke:var(--frost)}
+  .wbtn:active{transform:translateY(0)}
+  .wbtn svg{display:block;stroke:var(--dim);fill:none;stroke-width:1.6;stroke-linecap:round;
+    transition:stroke .12s}
   .wbtn.on{border-color:var(--ice);color:var(--ice);
     box-shadow:0 0 6px rgba(127,212,232,.25) inset}
   .wbtn.on svg{stroke:var(--ice)}
@@ -241,13 +265,29 @@
   .kn{display:flex;flex-direction:column;align-items:center;width:50px;padding:2px 0}
   .knob{width:34px;height:34px;border-radius:50%;position:relative;cursor:ns-resize;
     background:radial-gradient(circle at 35% 30%,#2A3B4E,#141E2A 65%,#0A0F16);
-    border:1px solid #2A3B4E;box-shadow:0 2px 5px rgba(0,0,0,.5);touch-action:none}
+    border:1px solid #2A3B4E;box-shadow:0 2px 5px rgba(0,0,0,.5);touch-action:none;
+    transition:box-shadow .15s ease,transform .1s ease}
+  /* arvorengas: 270° kaari joka täyttyy nupin arvon mukaan */
+  .knob .ring{position:absolute;inset:0;width:100%;height:100%;
+    transform:rotate(135deg);pointer-events:none}
+  .knob .ring circle{fill:none;stroke-width:2.5;stroke-linecap:round}
+  .knob .rtrack{stroke:#243444;stroke-dasharray:70.69 999;transition:stroke .15s}
+  .knob .rval{stroke:var(--ice);stroke-dasharray:0 999;
+    filter:drop-shadow(0 0 3px rgba(127,212,232,.5));
+    transition:stroke-dasharray .06s ease,filter .15s}
+  .knob:hover{box-shadow:0 0 0 1px rgba(127,212,232,.28),0 2px 5px rgba(0,0,0,.5)}
+  .kn:hover .rtrack{stroke:#31485c}
+  .knob.grab{transform:scale(1.08);
+    box-shadow:0 0 14px rgba(127,212,232,.4),0 2px 6px rgba(0,0,0,.55)}
+  .knob.grab .rval{filter:drop-shadow(0 0 5px rgba(127,212,232,.9))}
   .knob i{position:absolute;left:calc(50% - 1px);top:2px;width:2px;height:11px;
-    background:var(--ice);border-radius:1px;transform-origin:1px 15px;
+    background:var(--ice);border-radius:1px;transform-origin:1px 15px;z-index:1;
     box-shadow:0 0 4px rgba(127,212,232,.7)}
   .kn label{font-size:8px;letter-spacing:.06em;color:var(--dim);
     text-transform:uppercase;margin-top:3px;text-align:center;line-height:1.1}
-  .kn output{font-size:8px;color:var(--ice);margin-top:1px;white-space:nowrap}
+  .kn output{font-size:8px;color:var(--ice);margin-top:1px;white-space:nowrap;
+    transition:color .12s,text-shadow .12s}
+  .knob.grab~label,.kn:hover output{color:#EAF3F8}
   .knob:focus-visible{outline:2px solid var(--ice);outline-offset:2px}
 
   /* ---------- sequencer ---------- */
@@ -290,11 +330,17 @@
     .kn{width:56px}
   }
   .key{flex:1;background:linear-gradient(180deg,#E7EEF4,#C9D7E2);
-    border:1px solid #0A0F16;border-radius:0 0 3px 3px;position:relative}
+    border:1px solid #0A0F16;border-radius:0 0 3px 3px;position:relative;
+    transition:background .05s ease,box-shadow .1s ease}
   .key.black{position:absolute;width:6%;height:60%;z-index:2;
     background:linear-gradient(180deg,#16202C,#0A0F16);
     border:1px solid #000;border-radius:0 0 3px 3px}
-  .key.held{background:var(--ice)!important}
+  .key:hover{background:linear-gradient(180deg,#F2F7FB,#D7E4EE)}
+  .key.black:hover{background:linear-gradient(180deg,#1E2B3A,#0F1620)}
+  .key.held{background:linear-gradient(180deg,#A8E6F4,var(--ice))!important;
+    box-shadow:0 0 18px rgba(127,212,232,.75),inset 0 -6px 12px rgba(127,212,232,.35);
+    z-index:3}
+  .key.black.held{z-index:4}
   .key .kh{position:absolute;bottom:3px;left:0;right:0;text-align:center;
     font-size:8px;color:#5A6B7C;pointer-events:none}
   .key.black .kh{color:var(--dim)}
@@ -333,7 +379,7 @@
 <header>
   <div class="title"><h1>ROUTA</h1><p>WINTER SYNTH</p></div>
   <canvas id="scope" width="1400" height="112"></canvas>
-  <div class="badge">v0.7.0</div>
+  <div class="badge">v0.7.1</div>
   <div id="masterSlot"></div>
   <button id="power" aria-label="Power on audio engine">POWER</button>
 </header>
@@ -381,7 +427,7 @@
   <div id="kb" role="application" aria-label="Keyboard"></div>
 </div>
 
-<footer>ROUTA v0.7.0 · 8-voice · knobs: drag up/down, Shift = fine, double click = reset · audio starts from POWER or first touch</footer>
+<footer>ROUTA v0.7.1 · 8-voice · knobs: drag up/down, Shift = fine, double click = reset · audio starts from POWER or first touch</footer>
 
 <script>
 'use strict';
@@ -833,6 +879,12 @@ function makeKnob(c){
   const kb=document.createElement('div'); kb.className='knob';
   kb.tabIndex=0; kb.setAttribute('role','slider');
   kb.setAttribute('aria-label',c.l);
+  kb.insertAdjacentHTML('afterbegin',
+    '<svg class="ring" viewBox="0 0 34 34" aria-hidden="true">'+
+    '<circle class="rtrack" cx="17" cy="17" r="15"/>'+
+    '<circle class="rval" cx="17" cy="17" r="15"/></svg>');
+  const rval=kb.querySelector('.rval');
+  const ARC=0.75*2*Math.PI*15;   // 270° kaari, sama alue kuin osoitin
   const ind=document.createElement('i'); kb.appendChild(ind);
   const lab=document.createElement('label'); lab.textContent=c.l;
   const out=document.createElement('output');
@@ -844,8 +896,9 @@ function makeKnob(c){
   const fmt=v=>c.fmt?c.fmt(v):(+v).toFixed(2).replace(/\.?0+$/,'')||'0';
 
   function render(){
-    const norm=(toS(P[c.k])-lo)/(hi-lo);
+    const norm=Math.min(1,Math.max(0,(toS(P[c.k])-lo)/(hi-lo)));
     ind.style.transform=`rotate(${-135+norm*270}deg)`;
+    rval.style.strokeDasharray=(norm*ARC).toFixed(2)+' 999';
     out.textContent=fmt(P[c.k]);
     kb.setAttribute('aria-valuetext',fmt(P[c.k]));
   }
@@ -859,14 +912,15 @@ function makeKnob(c){
   kb.addEventListener('pointerdown',e=>{
     e.preventDefault(); kb.setPointerCapture(e.pointerId);
     dragY=e.clientY; dragNorm=(toS(P[c.k])-lo)/(hi-lo);
+    kb.classList.add('grab');
   });
   kb.addEventListener('pointermove',e=>{
     if(dragY==null)return;
     const scale=e.shiftKey?1200:200; // px per full range
     setNorm(dragNorm+(dragY-e.clientY)/scale);
   });
-  kb.addEventListener('pointerup',()=>dragY=null);
-  kb.addEventListener('pointercancel',()=>dragY=null);
+  kb.addEventListener('pointerup',()=>{dragY=null;kb.classList.remove('grab');});
+  kb.addEventListener('pointercancel',()=>{dragY=null;kb.classList.remove('grab');});
   kb.addEventListener('dblclick',()=>{P[c.k]=DEFAULTS[c.k];render();applyParam(c.k);});
   kb.addEventListener('keydown',e=>{
     const step=(e.shiftKey?0.005:0.03);

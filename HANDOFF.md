@@ -5,7 +5,7 @@
 > viimeksi jäätiin. Päivitä **Sessioloki** (alhaalla) aina kun teet
 > muutoksia, niin seuraava kerta pystyy jatkamaan saumattomasti.
 
-**Nykyversio:** v0.7.0
+**Nykyversio:** v0.7.1
 **Repo:** `tmmakela/Routa` · **Päähaara:** `main` · **Kehityshaara:** `claude/syntikka-projekti-yn2uhl`
 **Koko projekti on yhdessä tiedostossa:** [`index.html`](./index.html)
 
@@ -204,6 +204,19 @@ Priorisoitu; poimi ylhäältä. (`index.html`:n "NEXT (ideas)" -lista on sama.)
 ## 8. Sessioloki
 
 > Uusin ylimmäs. Merkitse: päivä, versio, mitä tehtiin, mihin jäätiin.
+
+### 2026-07-18 (jatko 3) · v0.7.1 — Moderni ilme & tuntuma
+- Käyttäjän toive: iisi, intuitiivinen, moderni → valittu suunta "moderni ilme + tuntuma".
+- **Nuppien arvorenkaat:** jokaisen nupin ympärille SVG 270°-kaari joka täyttyy
+  arvon mukaan (Vital/Serum-tyyli). `makeKnob` injektoi `<svg.ring>`, `render()`
+  asettaa `rval` stroke-dasharray = norm*ARC.
+- **Mikrovuorovaikutukset:** nuppi nousee+hehkuu vedettäessä (`.grab`), rengas
+  kirkastuu hoverissa; moduulit korostuvat hoverissa; wave-napit nousevat;
+  koskettimet hehkuvat painettaessa; POWER sykkii kunnes ääni käynnistetty
+  (`prefers-reduced-motion` huomioitu).
+- Testattu: 35 rengasta, täyttö seuraa arvoa, grab & hehku toimivat, 0 virhettä.
+- **Seuraavaksi (jos jatketaan modernisointia):** Easy-tila (makro-nupit),
+  ohjaava ensikäyttö, tai roadmapin toiminnot (sekvenssi presettiin, WAV).
 
 ### 2026-07-18 (jatko 2) · v0.7.0 — Unison + glide -moottori
 - Iso äänellinen harppaus: **unison (supersaw)** ja **glide/portamento**.

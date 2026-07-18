@@ -6,7 +6,7 @@
 <title>ROUTA — winter synth</title>
 <!--
   ============================================================
-  ROUTA v0.7.3 — Jääportit-style browser synth
+  ROUTA v0.7.4 — Jääportit-style browser synth
   ============================================================
   HANDOFF (read first in a new session):
   >> See HANDOFF.md in the repo root for the full continuity
@@ -168,6 +168,18 @@
     (deg/on) instead of replacing the array, so the per-step
     click handlers' closures stay valid. syncSeqUI() refreshes
     bpm/gate/root/scale/kaamos + step selects & gate states.
+  v0.7.4 iPad / TABLET OPTIMISATION
+  - New @media (pointer:coarse) and (min-width:601px) block
+    (tablets, excludes phones which keep the max-width:600
+    layout). Placed AFTER the base coarse block so it wins.
+  - Keyboard is sticky to the viewport bottom so you can play
+    while tweaking modules up top; footer hidden here so the
+    keyboard sits flush (was 26px short behind the footer).
+  - Bigger touch targets: knobs 44px, preset chips, io/wave/
+    seq buttons, range sliders, root/scale selects, step
+    selects, gates 30px, octave buttons.
+  - Landscape (orientation:landscape) uses a shorter 165px
+    keyboard to leave more room for the modules.
 
   NEXT (ideas)
   - Easy view (macro knobs) / guided first-use
@@ -405,6 +417,42 @@
     #kb{height:150px}
     footer{padding-bottom:8px}
   }
+
+  /* ---------- iPad / tabletti (coarse pointer, ei puhelin) ---------- */
+  @media (pointer:coarse) and (min-width:601px){
+    /* koskettimisto aina tavoitettavissa kun säätää nuppeja ylhäällä */
+    .kbwrap{position:sticky;bottom:0;z-index:20;background:var(--night);
+      padding:6px 12px 10px;box-shadow:0 -12px 28px rgba(10,15,22,.95)}
+    body{overscroll-behavior-y:contain}
+    footer{display:none}   /* footer-vihje pois → koskettimisto tasan pohjaan */
+    /* suuremmat kosketuskohteet */
+    .pchip{padding:9px 15px;font-size:11px}
+    .io{padding:8px 14px;font-size:10px}
+    .cathd .nm{font-size:10px}
+    .wbtn{padding:7px 12px}
+    .wbtn svg{width:22px;height:15px}
+    .seqctl button{padding:9px 18px;font-size:11px}
+    .seqctl input[type=range]{width:120px;height:28px}
+    .seqctl label{font-size:11px}
+    .seqctl output{font-size:11px}
+    #seqRoot,#seqScale{padding:6px 4px;font-size:11px}
+    .step select{font-size:11px;padding:4px 2px}
+    .step .gate{height:30px}
+    #seqSteps{grid-auto-columns:minmax(48px,1fr)}
+    .kbctl{font-size:11px;margin-bottom:6px}
+    .kbctl .oct button{padding:6px 16px;font-size:13px}
+    #octLbl{font-size:15px;margin:0 4px}
+    /* hieman isommat nupit kuin peruscoarse (40px) */
+    .knob{width:44px;height:44px}
+    .knob i{transform-origin:1px 20px;height:14px}
+    .kn{width:62px}
+    .kn label{font-size:9px}
+    .kn output{font-size:9px}
+  }
+  /* landscapessa lyhyempi koskettimisto → enemmän tilaa moduuleille */
+  @media (pointer:coarse) and (min-width:601px) and (orientation:landscape){
+    #kb{height:165px}
+  }
 </style>
 </head>
 <body>
@@ -412,7 +460,7 @@
 <header>
   <div class="title"><h1>ROUTA</h1><p>WINTER SYNTH</p></div>
   <canvas id="scope" width="1400" height="112"></canvas>
-  <div class="badge">v0.7.3</div>
+  <div class="badge">v0.7.4</div>
   <div id="masterSlot"></div>
   <button id="rec" aria-label="Record to WAV">● REC</button>
   <button id="power" aria-label="Power on audio engine">POWER</button>
@@ -461,7 +509,7 @@
   <div id="kb" role="application" aria-label="Keyboard"></div>
 </div>
 
-<footer>ROUTA v0.7.3 · 8-voice · knobs: drag up/down, Shift = fine, double click = reset · audio starts from POWER or first touch</footer>
+<footer>ROUTA v0.7.4 · 8-voice · knobs: drag up/down, Shift = fine, double click = reset · audio starts from POWER or first touch</footer>
 
 <script>
 'use strict';

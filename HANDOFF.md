@@ -5,7 +5,7 @@
 > viimeksi jäätiin. Päivitä **Sessioloki** (alhaalla) aina kun teet
 > muutoksia, niin seuraava kerta pystyy jatkamaan saumattomasti.
 
-**Nykyversio:** v0.7.3
+**Nykyversio:** v0.7.4
 **Repo:** `tmmakela/Routa` · **Päähaara:** `main` · **Kehityshaara:** `claude/syntikka-projekti-yn2uhl`
 **Koko projekti on yhdessä tiedostossa:** [`index.html`](./index.html)
 
@@ -204,6 +204,20 @@ Priorisoitu; poimi ylhäältä. (`index.html`:n "NEXT (ideas)" -lista on sama.)
 ## 8. Sessioloki
 
 > Uusin ylimmäs. Merkitse: päivä, versio, mitä tehtiin, mihin jäätiin.
+
+### 2026-07-18 (jatko 6) · v0.7.4 — iPad/tablet-optimointi
+- Uusi `@media (pointer:coarse) and (min-width:601px)` -lohko (tabletit; puhelimet
+  jäävät max-width:600-layouttiin). Sijoitettu peruscoarse-lohkon JÄLKEEN → voittaa.
+- **Sticky-koskettimisto** viewportin pohjaan → voit soittaa säätäessäsi ylhäällä.
+  Footer piilotettu tässä layoutissa jotta koskettimisto on tasan pohjassa
+  (oli 26px irti footerin takia).
+- **Suuremmat kosketuskohteet:** nupit 44px, preset-chipit, io/wave/seq-napit,
+  liukusäätimet, root/scale-selectit, step-selectit, gatet 30px, octave-napit.
+- Landscape (`orientation:landscape`): lyhyempi 165px koskettimisto → enemmän
+  tilaa moduuleille.
+- Testattu portrait (820×1180) + landscape (1180×820): koskettimisto pinnattu
+  pohjaan, ei vaakaylivuotoa, kosketuskohteet suuremmat, soitto toimii. 0 virhettä.
+- **Seuraavaksi:** Easy-tila / ohjaava ensikäyttö, tai AudioWorklet-särö.
 
 ### 2026-07-18 (jatko 5) · v0.7.3 — Koko projektin tallennus (params + sekvenssi)
 - Export/import niputtaa nyt myös sekvensserin. Export: `{routa, params:{...P},

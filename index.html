@@ -6,7 +6,7 @@
 <title>ROUTA — winter synth</title>
 <!--
   ============================================================
-  ROUTA v0.7.1 — Jääportit-style browser synth
+  ROUTA v0.7.2 — Jääportit-style browser synth
   ============================================================
   HANDOFF (read first in a new session):
   >> See HANDOFF.md in the repo root for the full continuity
@@ -145,8 +145,22 @@
     hover; keys glow when held; POWER gently pulses until the
     engine is booted (@keyframes powerPulse, off once .on;
     respects prefers-reduced-motion).
+  v0.7.2 WAV RECORDING
+  - REC button (header, next to POWER) records the master
+    output to a real 16-bit stereo WAV and downloads it.
+  - boot() adds a silent side-branch: master -> ScriptProcessor
+    (4096, works on iOS) -> 0-gain -> destination. onaudioprocess
+    copies raw Float32 L/R into recL/recR only while recording.
+    (ScriptProcessor is deprecated but universally supported;
+    AudioWorklet is a later option.)
+  - encodeWAV() writes a RIFF/WAVE PCM header + interleaved
+    16-bit samples at ctx.sampleRate. toggleRec() flips state,
+    swaps REC/STOP, and on stop builds the Blob + downloads
+    routa-take.wav.
+
+  NEXT (ideas)
   - Save sequence into preset JSON (now synth params only)
-  - WAV capture (MediaRecorder from master)
+  - Easy view (macro knobs) / guided first-use
   - AudioWorklet drive/foldback for grit
   ============================================================
 -->
@@ -189,7 +203,16 @@
   @keyframes powerPulse{
     0%,100%{box-shadow:0 0 0 0 rgba(127,212,232,.0)}
     50%{box-shadow:0 0 14px 1px rgba(127,212,232,.45)}}
-  @media (prefers-reduced-motion:reduce){#power{animation:none}}
+  #rec{font:inherit;font-size:10px;letter-spacing:.12em;
+    background:transparent;color:var(--dim);border:1px solid var(--edge);
+    border-radius:3px;padding:6px 12px;cursor:pointer;white-space:nowrap;
+    transition:color .15s,border-color .15s,box-shadow .15s,background .15s}
+  #rec:hover{color:#EFA6A6;border-color:#B5545433}
+  #rec.on{color:#fff;background:#C0392B;border-color:#C0392B;
+    animation:recPulse 1.2s ease-in-out infinite}
+  @keyframes recPulse{0%,100%{box-shadow:0 0 8px rgba(192,57,43,.4)}
+    50%{box-shadow:0 0 16px 2px rgba(192,57,43,.7)}}
+  @media (prefers-reduced-motion:reduce){#power,#rec{animation:none}}
   #masterSlot{display:flex;gap:0}
 
   /* ---------- preset library ---------- */
@@ -379,8 +402,9 @@
 <header>
   <div class="title"><h1>ROUTA</h1><p>WINTER SYNTH</p></div>
   <canvas id="scope" width="1400" height="112"></canvas>
-  <div class="badge">v0.7.1</div>
+  <div class="badge">v0.7.2</div>
   <div id="masterSlot"></div>
+  <button id="rec" aria-label="Record to WAV">● REC</button>
   <button id="power" aria-label="Power on audio engine">POWER</button>
 </header>
 
@@ -427,7 +451,7 @@
   <div id="kb" role="application" aria-label="Keyboard"></div>
 </div>
 
-<footer>ROUTA v0.7.1 · 8-voice · knobs: drag up/down, Shift = fine, double click = reset · audio starts from POWER or first touch</footer>
+<footer>ROUTA v0.7.2 · 8-voice · knobs: drag up/down, Shift = fine, double click = reset · audio starts from POWER or first touch</footer>
 
 <script>
 'use strict';
@@ -642,6 +666,7 @@ const voices = new Map();
 const MAXV = 8;
 let bendC=0;
 let lastFreq=null;   // glide: edellisen soitetun nuotin fundamentaali
+let recProc=null, recording=false, recL=[], recR=[], recFrames=0;  // WAV-nauhuri
 
 function driveCurve(a){
   const n=1024, c=new Float32Array(n), k=a*60;
@@ -659,6 +684,18 @@ function boot(){
   master = ctx.createGain(); master.gain.value = P.master;
   analyser = ctx.createAnalyser(); analyser.fftSize = 2048;
   master.connect(analyser).connect(ctx.destination);
+
+  // WAV-nauhuri: hiljainen sivuhaara masterista (ScriptProcessor toimii iOS:llä).
+  // Kaappaa raa'at näytteet vain kun recording=true.
+  recProc = ctx.createScriptProcessor(4096,2,2);
+  const recSink = ctx.createGain(); recSink.gain.value=0;
+  master.connect(recProc); recProc.connect(recSink).connect(ctx.destination);
+  recProc.onaudioprocess = e=>{
+    if(!recording) return;
+    const L=e.inputBuffer.getChannelData(0), R=e.inputBuffer.getChannelData(1);
+    recL.push(new Float32Array(L)); recR.push(new Float32Array(R));
+    recFrames+=L.length;
+  };
 
   bus = ctx.createGain(); bus.gain.value=1;
 
@@ -818,6 +855,47 @@ function noteOff(midi, steal=false, at=null){
   const stop=t+(steal?0.1:P.rel+0.5);
   v.oscs.forEach(o=>o.stop(stop)); v.n.stop(stop);
   setTimeout(()=>{try{v.vGain.disconnect();v.vf.disconnect();lfoFiltG.disconnect(v.vf.detune)}catch(e){}}, (stop-ctx.currentTime)*1000+100);
+}
+
+/* ================= WAV-NAUHURI ================= */
+function encodeWAV(){
+  const rate=ctx.sampleRate, n=recFrames, bytes=44+n*4;
+  const buf=new ArrayBuffer(bytes), view=new DataView(buf);
+  const wr=(o,s)=>{for(let i=0;i<s.length;i++)view.setUint8(o+i,s.charCodeAt(i));};
+  wr(0,'RIFF'); view.setUint32(4,bytes-8,true); wr(8,'WAVE');
+  wr(12,'fmt '); view.setUint32(16,16,true); view.setUint16(20,1,true);   // PCM
+  view.setUint16(22,2,true); view.setUint32(24,rate,true);               // 2 kanavaa
+  view.setUint32(28,rate*4,true); view.setUint16(32,4,true); view.setUint16(34,16,true);
+  wr(36,'data'); view.setUint32(40,n*4,true);
+  let off=44;
+  for(let c=0;c<recL.length;c++){
+    const L=recL[c], R=recR[c];
+    for(let i=0;i<L.length;i++){
+      let l=Math.max(-1,Math.min(1,L[i])), r=Math.max(-1,Math.min(1,R[i]));
+      view.setInt16(off, l<0?l*0x8000:l*0x7FFF, true); off+=2;
+      view.setInt16(off, r<0?r*0x8000:r*0x7FFF, true); off+=2;
+    }
+  }
+  return new Blob([buf],{type:'audio/wav'});
+}
+function toggleRec(){
+  if(!ctx) boot();
+  if(ctx.state==='suspended') ctx.resume();
+  const btn=document.getElementById('rec');
+  recording=!recording;
+  if(recording){
+    recL=[]; recR=[]; recFrames=0;
+    btn.classList.add('on'); btn.textContent='■ STOP';
+  } else {
+    btn.classList.remove('on'); btn.textContent='● REC';
+    if(recFrames>0){
+      const blob=encodeWAV();
+      const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+      a.download='routa-take.wav'; a.click();
+      setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+    }
+    recL=[]; recR=[]; recFrames=0;
+  }
 }
 
 /* ================= UI: KNOBS + MODULES ================= */
@@ -1287,6 +1365,7 @@ document.getElementById('importBtn').addEventListener('click',()=>{
 
 /* ================= INIT ================= */
 document.getElementById('power').addEventListener('click',boot);
+document.getElementById('rec').addEventListener('click',toggleRec);
 buildPanel(); buildKb(); kbPointer(); buildSeqUI(); buildPresetBar();
 </script>
 </body>

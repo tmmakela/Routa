@@ -5,7 +5,7 @@
 > viimeksi jäätiin. Päivitä **Sessioloki** (alhaalla) aina kun teet
 > muutoksia, niin seuraava kerta pystyy jatkamaan saumattomasti.
 
-**Nykyversio:** v0.7.1
+**Nykyversio:** v0.7.2
 **Repo:** `tmmakela/Routa` · **Päähaara:** `main` · **Kehityshaara:** `claude/syntikka-projekti-yn2uhl`
 **Koko projekti on yhdessä tiedostossa:** [`index.html`](./index.html)
 
@@ -179,8 +179,9 @@ Priorisoitu; poimi ylhäältä. (`index.html`:n "NEXT (ideas)" -lista on sama.)
 4. **Sekvenssi presettiin** — nyt JSON tallentaa vain synaparametrit,
    ei sekvenssin askelia; lisää `seq.steps` export/importiin.
 5. **Preset-kategoria JSONiin** — export/import muistaisi kategorian.
-6. **WAV-tallennus** — MediaRecorder masterista → lataa tiedostona.
-7. **AudioWorklet drive/foldback** — rosoisempaa säröä.
+6. ~~WAV-tallennus~~ — ✅ tehty v0.7.2 (ScriptProcessor-tap + encodeWAV).
+7. **AudioWorklet drive/foldback** — rosoisempaa säröä (ja WAV-tap workletiksi).
+8. **Easy-tila / ohjaava ensikäyttö** — makro-nupit ja aloitusopastus.
 
 ---
 
@@ -204,6 +205,20 @@ Priorisoitu; poimi ylhäältä. (`index.html`:n "NEXT (ideas)" -lista on sama.)
 ## 8. Sessioloki
 
 > Uusin ylimmäs. Merkitse: päivä, versio, mitä tehtiin, mihin jäätiin.
+
+### 2026-07-18 (jatko 4) · v0.7.2 — WAV-nauhoitus
+- **REC-nappi** headerissa (POWERin vieressä): nauhoittaa master-ulostulon
+  oikeaksi 16-bit stereo-WAV:ksi ja lataa sen (`routa-take.wav`).
+- `boot()` lisää hiljaisen sivuhaaran: master → ScriptProcessor(4096, toimii
+  iOS:llä) → 0-gain → destination. `onaudioprocess` kopioi raa'at Float32 L/R
+  vain kun `recording=true`.
+- `encodeWAV()` kirjoittaa RIFF/WAVE PCM-headerin + interleavatut 16-bit näytteet
+  `ctx.sampleRate`:lla. `toggleRec()` vaihtaa tilan (REC/STOP) ja stopatessa
+  rakentaa Blobin + lataa.
+- Testattu oikealla download-kaappauksella: validi RIFF/WAVE, stereo, 44.1kHz,
+  ei-hiljainen (huippunäyte ~22000). 0 virhettä.
+- **Seuraavaksi:** Easy-tila / ohjaava ensikäyttö (helppokäyttö), sekvenssi
+  presettiin, tai AudioWorklet-särö.
 
 ### 2026-07-18 (jatko 3) · v0.7.1 — Moderni ilme & tuntuma
 - Käyttäjän toive: iisi, intuitiivinen, moderni → valittu suunta "moderni ilme + tuntuma".

@@ -5,7 +5,7 @@
 > viimeksi jäätiin. Päivitä **Sessioloki** (alhaalla) aina kun teet
 > muutoksia, niin seuraava kerta pystyy jatkamaan saumattomasti.
 
-**Nykyversio:** v0.7.5
+**Nykyversio:** v0.7.6
 **Repo:** `tmmakela/Routa` · **Päähaara:** `main` · **Kehityshaara:** `claude/syntikka-projekti-yn2uhl`
 **Koko projekti on yhdessä tiedostossa:** [`index.html`](./index.html)
 
@@ -204,6 +204,18 @@ Priorisoitu; poimi ylhäältä. (`index.html`:n "NEXT (ideas)" -lista on sama.)
 ## 8. Sessioloki
 
 > Uusin ylimmäs. Merkitse: päivä, versio, mitä tehtiin, mihin jäätiin.
+
+### 2026-07-18 (jatko 8) · v0.7.6 — iPad-sekvensseri
+- Portrait-tabletti: 16 askelta rivittyvät **2×8:ksi** (`grid-auto-flow:row;
+  repeat(8,1fr)`) → ei vaakaylivuotoa/hankalaa sivuvieritystä kosketuksella.
+  Landscape ja desktop pitävät yksirivisen 16:n.
+- Isommat kosketuskohteet: 36px gatet (portrait), korkeammat selectit.
+- Beat-vihje: joka 4. askeleen (1/5/9/13) gatessa vasen accent-reuna (rivin
+  alut 1/9 hieman paksummat); soiva askel korostaa myös selectinsä. Näkyy myös
+  desktopilla.
+- Testattu: portrait 2×8 ilman ylivuotoa, gate-toggle + playhead toimivat,
+  landscape/desktop ennallaan. 0 virhettä.
+- **Seuraavaksi:** Easy-tila / ohjaava ensikäyttö, tai AudioWorklet-särö.
 
 ### 2026-07-18 (jatko 7) · v0.7.5 — Kompakti preset-kirjasto (välilehdet)
 - 4 pinottua kategoriariviä → yksi välilehtipalkki. Otsikkorivi: PRESETS +

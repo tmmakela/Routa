@@ -6,7 +6,7 @@
 <title>ROUTA — winter synth</title>
 <!--
   ============================================================
-  ROUTA v0.6.1 — Jääportit-style browser synth
+  ROUTA v0.6.2 — Jääportit-style browser synth
   ============================================================
   HANDOFF (read first in a new session):
   >> See HANDOFF.md in the repo root for the full continuity
@@ -107,6 +107,17 @@
     and a coloured glow when active. CAT_ACCENT maps
     category -> var. Layout: .catrow grid 82px|1fr, chips
     flex-wrap, so it stays compact and reflows on mobile.
+  v0.6.2 iPad/iOS TOUCH HARDENING
+  - Stop long-press text selection, the iOS callout popup
+    and the selection loupe hijacking play: * now sets
+    user-select:none + -webkit-touch-callout:none app-wide.
+  - Double-tap zoom killed on controls
+    (button,select,input,label,a -> touch-action:manipulation);
+    page still scrolls (body left at touch-action:auto).
+  - Keys own their gestures: touch-action isn't inherited so
+    `#kb *{touch-action:none}` was added (previously only #kb
+    had it, leaving .key at auto -> a touch starting on a key
+    could scroll/zoom instead of sounding). Knobs already none.
 
   NEXT (ideas)
   - Glide/portamento, unison detune
@@ -124,10 +135,16 @@
     --acc-lead:#7FD4E8; --acc-bass:#63B98C;
     --acc-pad:#9D8CE0;  --acc-keys:#79C7C0;
   }
-  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;
+    -webkit-user-select:none;-moz-user-select:none;user-select:none;
+    -webkit-touch-callout:none}
   html,body{background:var(--night);color:var(--frost);
     font-family:'IBM Plex Mono',monospace;font-size:12px;overscroll-behavior:none}
   body{min-height:100svh;display:flex;flex-direction:column;align-items:center}
+  /* iPad/iOS: estä tupla-tap-zoom napeista/kontrolleista (koskettimilla ja
+     nupeilla on jo touch-action:none glissandoa/vetoa varten). Sivun vieritys
+     jää ennalleen koska bodyyn ei aseteta touch-action:none. */
+  button,select,input,label,a{touch-action:manipulation}
 
   /* ---------- header / scope ---------- */
   header{width:100%;max-width:1060px;position:relative;padding:12px 12px 4px;
@@ -248,6 +265,9 @@
   .kbctl .oct button{background:transparent;border:1px solid var(--edge);
     color:var(--frost);font:inherit;padding:2px 9px;border-radius:3px;cursor:pointer}
   #kb{display:flex;position:relative;height:110px;user-select:none;touch-action:none}
+  /* koskettimet (ja niiden lapset) omaan gesture-hallintaan: kosketus soittaa,
+     ei vieritä/zoomaa/valitse — touch-action ei periydy, joten asetetaan tähän */
+  #kb *{touch-action:none}
   @media (pointer:coarse){
     #kb{height:210px}
     .key .kh{font-size:10px;bottom:6px}
@@ -299,7 +319,7 @@
 <header>
   <div class="title"><h1>ROUTA</h1><p>WINTER SYNTH</p></div>
   <canvas id="scope" width="1400" height="112"></canvas>
-  <div class="badge">v0.6.1</div>
+  <div class="badge">v0.6.2</div>
   <div id="masterSlot"></div>
   <button id="power" aria-label="Power on audio engine">POWER</button>
 </header>
@@ -347,7 +367,7 @@
   <div id="kb" role="application" aria-label="Keyboard"></div>
 </div>
 
-<footer>ROUTA v0.6.1 · 8-voice · knobs: drag up/down, Shift = fine, double click = reset · audio starts from POWER or first touch</footer>
+<footer>ROUTA v0.6.2 · 8-voice · knobs: drag up/down, Shift = fine, double click = reset · audio starts from POWER or first touch</footer>
 
 <script>
 'use strict';

@@ -5,7 +5,7 @@
 > viimeksi jäätiin. Päivitä **Sessioloki** (alhaalla) aina kun teet
 > muutoksia, niin seuraava kerta pystyy jatkamaan saumattomasti.
 
-**Nykyversio:** v0.6.1
+**Nykyversio:** v0.6.2
 **Repo:** `tmmakela/Routa` · **Päähaara:** `main` · **Kehityshaara:** `claude/syntikka-projekti-yn2uhl`
 **Koko projekti on yhdessä tiedostossa:** [`index.html`](./index.html)
 
@@ -201,6 +201,18 @@ Priorisoitu; poimi ylhäältä. (`index.html`:n "NEXT (ideas)" -lista on sama.)
 ## 8. Sessioloki
 
 > Uusin ylimmäs. Merkitse: päivä, versio, mitä tehtiin, mihin jäätiin.
+
+### 2026-07-18 (jatko) · v0.6.2 — iPad/iOS-kosketuksen kovennus
+- Korjattu ongelma jossa iPadilla pitkä painallus toi tekstin valinnan /
+  iOS-callout-popupin / suurennuslasin soiton sijaan, ja tupla-tap zoomasi.
+- `*`: `user-select:none` + `-webkit-touch-callout:none` koko sovellukseen.
+- `button,select,input,label,a`: `touch-action:manipulation` (ei tupla-tap-zoomia);
+  body jätetty `auto` → sivu vierittyy edelleen.
+- `#kb *{touch-action:none}` → koskettimet (aiemmin vain `#kb`, joten `.key` oli
+  `auto`) omaan gesture-hallintaan. Nupeilla oli jo `none`.
+- Testattu iPad-emulaatiolla (kosketusnäyttö): computed-tyylit oikein, kosketus
+  soittaa, ei virheitä. Huom: `-webkit-touch-callout` näkyy vain Safarissa, ei
+  Chromiumin computed-tyyleissä — varmistettu lähdekoodista.
 
 ### 2026-07-18 · v0.5.4 → v0.6.1
 - **v0.5.4:** 5 uutta presettiä (Halla, Ahma, Tunturi, Kide, Pakkanen).

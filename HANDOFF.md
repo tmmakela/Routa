@@ -5,7 +5,7 @@
 > viimeksi jäätiin. Päivitä **Sessioloki** (alhaalla) aina kun teet
 > muutoksia, niin seuraava kerta pystyy jatkamaan saumattomasti.
 
-**Nykyversio:** v0.6.2
+**Nykyversio:** v0.7.0
 **Repo:** `tmmakela/Routa` · **Päähaara:** `main` · **Kehityshaara:** `claude/syntikka-projekti-yn2uhl`
 **Koko projekti on yhdessä tiedostossa:** [`index.html`](./index.html)
 
@@ -106,6 +106,7 @@ Kaikki äänen parametrit ovat yhdessä objektissa `P` (oletukset
 | Osc 1 | `osc1wave, osc1oct, osc1lvl` |
 | Osc 2 | `osc2wave, osc2oct, osc2det` (centtiä), `osc2lvl` |
 | Kohina | `noise` |
+| Voice | `glide` (s), `unison` (1..7), `uniDetune` (spread, centtiä) |
 | Filtteri | `cutoff, reso`, verhokäyrä `fAmt, fAtk, fDec` |
 | LFO | `lfoRate, lfoDepth, lfoTarget` (`'filter'`/`'pitch'`) |
 | Amp ADSR | `atk, dec, sus, rel` |
@@ -160,7 +161,10 @@ Revontuli, Tulikettu…). Pidä id pienellä ja ilman ääkkösiä
   Hehku, Ukko, Viima, Pakkanen
 - ✅ **Kirjaston visuaalinen uudistus** (v0.6.1): kehystetty paneeli,
   värikoodatut kategoriat, hehkuvat chipit, aktiivisen presetin korostus
-- ⚠️ BASS (1), PAD (4), KEYS (3) — kevyempiä, kaipaavat täydennystä
+- ✅ **iPad/iOS-kosketuksen kovennus** (v0.6.2)
+- ✅ **Unison + glide -moottori** (v0.7.0): VOICE-moduuli (glide/unison/spread),
+  supersaw-äänet. Kirjasto 23 presettiä (LEADS 10, BASS 3, PAD 6, KEYS 4).
+- ⚠️ BASS (3) & KEYS (4) vielä kevyempiä kuin LEADS — voisi täydentää
 
 ---
 
@@ -168,11 +172,10 @@ Revontuli, Tulikettu…). Pidä id pienellä ja ilman ääkkösiä
 
 Priorisoitu; poimi ylhäältä. (`index.html`:n "NEXT (ideas)" -lista on sama.)
 
-1. **Täydennä kirjastoa** — BASS-, PAD- ja KEYS-setit yhtä vahvoiksi kuin
-   LEADS (tavoite esim. 6–8 per kategoria). Ehkä uudet kategoriat: PLUCK, FX.
-2. **Glide / portamento** — monofoninen liuku nuottien välillä; tekisi
-   leadeista ilmaisuvoimaisempia (`glide`-parametri + `setTargetAtTime`).
-3. **Unison-detune** — paksuunna ääntä useammalla viritetyllä oscilla.
+1. **Täydennä kirjastoa** — BASS (3) ja KEYS (4) LEADSin (10) tasolle.
+   Ehkä uudet kategoriat: PLUCK, FX.
+2. ~~Glide / portamento~~ — ✅ tehty v0.7.0 (`glide`-param, `exponentialRampToValueAtTime`).
+3. ~~Unison-detune~~ — ✅ tehty v0.7.0 (`unison` + `uniDetune`, supersaw).
 4. **Sekvenssi presettiin** — nyt JSON tallentaa vain synaparametrit,
    ei sekvenssin askelia; lisää `seq.steps` export/importiin.
 5. **Preset-kategoria JSONiin** — export/import muistaisi kategorian.
@@ -201,6 +204,23 @@ Priorisoitu; poimi ylhäältä. (`index.html`:n "NEXT (ideas)" -lista on sama.)
 ## 8. Sessioloki
 
 > Uusin ylimmäs. Merkitse: päivä, versio, mitä tehtiin, mihin jäätiin.
+
+### 2026-07-18 (jatko 2) · v0.7.0 — Unison + glide -moottori
+- Iso äänellinen harppaus: **unison (supersaw)** ja **glide/portamento**.
+- Uudet parametrit: `glide` (s), `unison` (1..7), `uniDetune` (spread centtiä).
+- `noteOn` refaktoroitu: `mkOne()` luo yhden oscin, `mk()` rakentaa `unison`
+  kopiota levitettynä ±`uniDetune`, taso 1/√unison. Voice tallentaa nyt
+  `oscs`-taulukon (ennen o1/o2); `noteOff` ja pitch bend iteroivat sitä.
+  `lastFreq` + `exponentialRampToValueAtTime` hoitaa glideñ. Oletukset
+  unison:1/glide:0 → vanhat presetit soivat identtisinä.
+- Uusi **VOICE-moduuli** (glide/unison/spread) OSC2:n ja FILTERin väliin.
+- Kirjasto 15 → 23: +Kaiho (glide-lead), +Karhu/Jyrä (unison-basso),
+  +Myrsky/Usva (supersaw/pehmeä pad), +Tuisku (unison-key); Ukko & Tulikettu
+  päivitetty oikeiksi supersaw'iksi.
+- Testattu: supersaw (unison 7 = 14 oscia/ääni) tuottaa signaalia, glide toimii,
+  äänivaras kestää unisonin (9 nuottia), oletuspreset ennallaan. 0 virhettä.
+- **Seuraavaksi:** täydennä BASS/KEYS, tai sekvenssi presettiin (Roadmap 1 & 4),
+  tai WAV-tallennus (6).
 
 ### 2026-07-18 (jatko) · v0.6.2 — iPad/iOS-kosketuksen kovennus
 - Korjattu ongelma jossa iPadilla pitkä painallus toi tekstin valinnan /

@@ -6,7 +6,7 @@
 <title>ROUTA — winter synth</title>
 <!--
   ============================================================
-  ROUTA v0.6.2 — Jääportit-style browser synth
+  ROUTA v0.7.0 — Jääportit-style browser synth
   ============================================================
   HANDOFF (read first in a new session):
   >> See HANDOFF.md in the repo root for the full continuity
@@ -118,9 +118,23 @@
     `#kb *{touch-action:none}` was added (previously only #kb
     had it, leaving .key at auto -> a touch starting on a key
     could scroll/zoom instead of sounding). Knobs already none.
+  v0.7.0 UNISON + GLIDE ENGINE
+  - Voice engine now supports UNISON and GLIDE. New params:
+    glide (s), unison (1..7), uniDetune (spread cents).
+  - noteOn refactored: each osc goes through mkOne(); mk()
+    builds `unison` copies spread +/- uniDetune, level scaled
+    by 1/sqrt(unison). Voice stores an `oscs` array (was
+    o1/o2); noteOff + pitch-bend iterate oscs. lastFreq tracks
+    the previous note; glide>0 exponentialRamps each osc's
+    frequency from lastFreq to target over glide seconds.
+    Defaults keep unison:1/glide:0 so old presets are unchanged.
+  - New VOICE module (glide/unison/spread knobs) between OSC2
+    and FILTER. unison uses st:1 (1..7, any integer).
+  - Library grown to 23: LEADS+Kaiho (glide), BASS+Karhu/Jyrä
+    (unison), PAD+Myrsky/Usva (supersaw/soft unison),
+    KEYS+Tuisku; Ukko & Tulikettu upgraded to real supersaws.
 
   NEXT (ideas)
-  - Glide/portamento, unison detune
   - Save sequence into preset JSON (now synth params only)
   - WAV capture (MediaRecorder from master)
   - AudioWorklet drive/foldback for grit
@@ -319,7 +333,7 @@
 <header>
   <div class="title"><h1>ROUTA</h1><p>WINTER SYNTH</p></div>
   <canvas id="scope" width="1400" height="112"></canvas>
-  <div class="badge">v0.6.2</div>
+  <div class="badge">v0.7.0</div>
   <div id="masterSlot"></div>
   <button id="power" aria-label="Power on audio engine">POWER</button>
 </header>
@@ -367,7 +381,7 @@
   <div id="kb" role="application" aria-label="Keyboard"></div>
 </div>
 
-<footer>ROUTA v0.6.2 · 8-voice · knobs: drag up/down, Shift = fine, double click = reset · audio starts from POWER or first touch</footer>
+<footer>ROUTA v0.7.0 · 8-voice · knobs: drag up/down, Shift = fine, double click = reset · audio starts from POWER or first touch</footer>
 
 <script>
 'use strict';
@@ -376,6 +390,7 @@ const P = {
   osc1wave:'sawtooth', osc1oct:0,  osc1lvl:0.5,
   osc2wave:'triangle', osc2oct:-1, osc2det:7, osc2lvl:0.4,
   noise:0.03,
+  glide:0, unison:1, uniDetune:14,
   cutoff:1800, reso:2.0,
   fAmt:2400, fAtk:0.05, fDec:0.8,
   lfoRate:0.35, lfoDepth:600, lfoTarget:'filter',
@@ -446,9 +461,10 @@ const PRESETS = {
      kohtalainen reso, delay tilaan. Osa käyttää LFO->pitch
      vibratoa (aina päällä, siksi maltillinen depth).
      ============================================================ */
-  // Tulikettu: klassinen detune-saha trance-lead, leveä + delay
+  // Tulikettu: klassinen detune-saha trance-lead, leveä + delay + unison
   tulikettu:{...P, osc1wave:'sawtooth', osc1oct:0, osc1lvl:0.5,
     osc2wave:'sawtooth', osc2oct:0, osc2det:12, osc2lvl:0.45, noise:0.01,
+    unison:3, uniDetune:14,
     cutoff:3200, reso:3.5, fAmt:1800, fAtk:0.02, fDec:0.5,
     lfoRate:0.3, lfoDepth:300, lfoTarget:'filter', atk:0.02, dec:0.3, sus:0.8, rel:0.5,
     drive:0.18, driveTone:6500, chRate:0.5, chDepth:0.4, chMix:0.2,
@@ -487,9 +503,10 @@ const PRESETS = {
     lfoRate:4.5, lfoDepth:80, lfoTarget:'pitch', atk:0.03, dec:0.4, sus:0.85, rel:1.0,
     drive:0.12, driveTone:5500, chRate:0.45, chDepth:0.5, chMix:0.22,
     dlyTime:0.4, dlyFb:0.4, dlyMix:0.25, rvSize:2.6, rvDecay:3.2, rvMix:0.35},
-  // Ukko: iso voimakas leveä detune-sahastack-lead
+  // Ukko: iso voimakas supersaw-stack-lead (unison 5)
   ukko:{...P, osc1wave:'sawtooth', osc1oct:0, osc1lvl:0.5,
     osc2wave:'sawtooth', osc2oct:0, osc2det:-14, osc2lvl:0.45, noise:0.01,
+    unison:5, uniDetune:20,
     cutoff:3000, reso:3.5, fAmt:2000, fAtk:0.015, fDec:0.5,
     lfoRate:0.3, lfoDepth:300, lfoTarget:'filter', atk:0.015, dec:0.35, sus:0.85, rel:0.7,
     drive:0.25, driveTone:6000, chRate:0.35, chDepth:0.6, chFb:0.1, chMix:0.3,
@@ -501,7 +518,53 @@ const PRESETS = {
     cutoff:4200, reso:5, fAmt:1800, fAtk:0.006, fDec:0.3,
     lfoRate:0.4, lfoDepth:250, lfoTarget:'filter', atk:0.006, dec:0.2, sus:0.7, rel:0.35,
     drive:0.4, driveTone:7000, chMix:0.1, dlyTime:0.28, dlyFb:0.5, dlyMix:0.3,
-    rvSize:1.5, rvDecay:1.8, rvMix:0.2, eqHigh:4}
+    rvSize:1.5, rvDecay:1.8, rvMix:0.2, eqHigh:4},
+  // Kaiho: laulava glide-lead (portamento), lämmin vibrato
+  kaiho:{...P, osc1wave:'sawtooth', osc1oct:0, osc1lvl:0.5,
+    osc2wave:'triangle', osc2oct:0, osc2det:5, osc2lvl:0.35, noise:0,
+    glide:0.08, cutoff:2600, reso:3.5, fAmt:1600, fAtk:0.03, fDec:0.6,
+    lfoRate:5, lfoDepth:70, lfoTarget:'pitch', atk:0.02, dec:0.3, sus:0.85, rel:0.7,
+    drive:0.15, chMix:0.18, dlyTime:0.36, dlyFb:0.4, dlyMix:0.26,
+    rvSize:2.4, rvDecay:3, rvMix:0.3},
+
+  /* ============================================================
+     BASS / PAD / KEYS — hyödyntävät unisonia ja glideä
+     ============================================================ */
+  // Karhu: lihava unison-subbasso pienellä glidella + drive
+  karhu:{...P, osc1wave:'sawtooth', osc1oct:-1, osc1lvl:0.5,
+    osc2wave:'square', osc2oct:-2, osc2det:0, osc2lvl:0.4, noise:0,
+    glide:0.05, unison:3, uniDetune:10,
+    cutoff:800, reso:5, fAmt:2400, fAtk:0.006, fDec:0.3,
+    atk:0.005, dec:0.3, sus:0.6, rel:0.4, drive:0.4, driveTone:3000,
+    chMix:0.08, eqLow:5, dlyMix:0.06, rvSize:1, rvDecay:1.2, rvMix:0.12},
+  // Jyrä: ajava reese-henkinen unison-basso, aggressiivinen
+  jyra:{...P, osc1wave:'sawtooth', osc1oct:-1, osc1lvl:0.5,
+    osc2wave:'sawtooth', osc2oct:-1, osc2det:-16, osc2lvl:0.45, noise:0.01,
+    unison:3, uniDetune:14, cutoff:1100, reso:6, fAmt:2200, fAtk:0.006, fDec:0.26,
+    lfoRate:0.2, lfoDepth:120, atk:0.005, dec:0.28, sus:0.5, rel:0.35,
+    drive:0.45, driveTone:3800, chMix:0.12, dlyMix:0.08,
+    rvSize:1.2, rvDecay:1.5, rvMix:0.15},
+  // Myrsky: valtava supersaw-pad (unison 7), hidas ja leveä
+  myrsky:{...P, osc1wave:'sawtooth', osc1oct:0, osc1lvl:0.45,
+    osc2wave:'sawtooth', osc2oct:-1, osc2det:8, osc2lvl:0.4, noise:0.02,
+    unison:7, uniDetune:26, cutoff:1800, reso:2, fAmt:1600, fAtk:1.5, fDec:2.5,
+    lfoRate:0.12, lfoDepth:600, atk:1.2, dec:1.5, sus:0.9, rel:3.5,
+    chRate:0.25, chDepth:0.6, chMix:0.4, dlyTime:0.55, dlyFb:0.45, dlyMix:0.3,
+    rvSize:4.5, rvDecay:6, rvMix:0.55},
+  // Usva: pehmeä lämmin unison-pad, hento liike
+  usva:{...P, osc1wave:'triangle', osc1oct:0, osc1lvl:0.45,
+    osc2wave:'sawtooth', osc2oct:0, osc2det:6, osc2lvl:0.3, noise:0.01,
+    unison:5, uniDetune:16, cutoff:1500, reso:1.8, fAmt:1200, fAtk:1.2, fDec:2,
+    lfoRate:0.15, lfoDepth:500, atk:1.0, dec:1.2, sus:0.85, rel:3,
+    chRate:0.3, chDepth:0.5, chMix:0.35, dlyMix:0.2,
+    rvSize:4, rvDecay:5, rvMix:0.5},
+  // Tuisku: kimalteleva unison-key, plucky decay + liike
+  tuisku:{...P, osc1wave:'sawtooth', osc1oct:0, osc1lvl:0.4,
+    osc2wave:'triangle', osc2oct:1, osc2det:4, osc2lvl:0.3, noise:0.01,
+    unison:3, uniDetune:18, cutoff:3000, reso:3, fAmt:2400, fAtk:0.004, fDec:0.7,
+    lfoRate:0.3, lfoDepth:200, atk:0.004, dec:0.8, sus:0.3, rel:1.2,
+    chRate:0.5, chDepth:0.5, chMix:0.25, dlyTime:0.34, dlyFb:0.45, dlyMix:0.3,
+    rvSize:3, rvDecay:4, rvMix:0.42}
 };
 
 /* ================= PRESET-KIRJASTO (kategoriat) ================= */
@@ -511,12 +574,14 @@ const LIBRARY = [
     {id:'sisu', name:'Sisu'}, {id:'kaiku', name:'Kaiku'},
     {id:'loitsu', name:'Loitsu'}, {id:'hehku', name:'Hehku'},
     {id:'ukko', name:'Ukko'}, {id:'viima', name:'Viima'},
-    {id:'pakkanen', name:'Pakkanen'} ]},
-  {cat:'BASS', items:[ {id:'ahma', name:'Ahma'} ]},
+    {id:'kaiho', name:'Kaiho'}, {id:'pakkanen', name:'Pakkanen'} ]},
+  {cat:'BASS', items:[ {id:'ahma', name:'Ahma'},
+    {id:'karhu', name:'Karhu'}, {id:'jyra', name:'Jyrä'} ]},
   {cat:'PAD', items:[ {id:'routa', name:'Routa'}, {id:'kaamos', name:'Kaamos'},
-    {id:'revontuli', name:'Revontuli'}, {id:'tunturi', name:'Tunturi'} ]},
+    {id:'revontuli', name:'Revontuli'}, {id:'tunturi', name:'Tunturi'},
+    {id:'myrsky', name:'Myrsky'}, {id:'usva', name:'Usva'} ]},
   {cat:'KEYS', items:[ {id:'halla', name:'Halla'}, {id:'huurre', name:'Huurre'},
-    {id:'kide', name:'Kide'} ]}
+    {id:'kide', name:'Kide'}, {id:'tuisku', name:'Tuisku'} ]}
 ];
 
 /* ================= ENGINE ================= */
@@ -530,6 +595,7 @@ let ctx=null, master, analyser, bus, dryG,
 const voices = new Map();
 const MAXV = 8;
 let bendC=0;
+let lastFreq=null;   // glide: edellisen soitetun nuotin fundamentaali
 
 function driveCurve(a){
   const n=1024, c=new Float32Array(n), k=a*60;
@@ -656,17 +722,33 @@ function noteOn(midi, vel=1, at=null){
   vf.detune.setTargetAtTime(0, t+P.fAtk, Math.max(0.01,P.fDec/3));
   vGain.connect(vf).connect(bus);
 
-  const mk=(wave,oct,det,lvl)=>{
+  const uni=Math.min(7,Math.max(1,Math.round(P.unison)));
+  const gl=P.glide>0 && lastFreq ? P.glide : 0;
+  // yksi oskillaattori: unison-siirtymä centeissä + glide fundamentaaliin
+  const mkOne=(wave,oct,det,glvl,uniOff)=>{
     const o=ctx.createOscillator(); o.type=wave;
-    o.frequency.value=f*Math.pow(2,oct); o.detune.value=det+bendC;
-    o._baseDet=det;
-    const g=ctx.createGain(); g.gain.value=lvl;
+    const targF=f*Math.pow(2,oct);
+    if(gl){
+      o.frequency.setValueAtTime(lastFreq*Math.pow(2,oct), t);
+      o.frequency.exponentialRampToValueAtTime(targF, t+gl);
+    } else o.frequency.setValueAtTime(targF, t);
+    o._baseDet=det+uniOff; o.detune.value=o._baseDet+bendC;
+    const g=ctx.createGain(); g.gain.value=glvl;
     o.connect(g).connect(vGain);
     lfoPitchG.connect(o.detune);
     o.start(t); return o;
   };
-  const o1=mk(P.osc1wave,P.osc1oct,0,P.osc1lvl);
-  const o2=mk(P.osc2wave,P.osc2oct,P.osc2det,P.osc2lvl);
+  // rakenna 1..uni ääntä levitettynä +/- uniDetune yli, taso normalisoitu
+  const mk=(wave,oct,det,lvl)=>{
+    const out=[], glvl=lvl/Math.sqrt(uni), sp=P.uniDetune;
+    for(let i=0;i<uni;i++){
+      const off = uni>1 ? (i/(uni-1)-0.5)*2*sp : 0;
+      out.push(mkOne(wave,oct,det,glvl,off));
+    }
+    return out;
+  };
+  const oscs=[...mk(P.osc1wave,P.osc1oct,0,P.osc1lvl),
+              ...mk(P.osc2wave,P.osc2oct,P.osc2det,P.osc2lvl)];
   const n=ctx.createBufferSource(); n.buffer=getNoise(); n.loop=true;
   const ng=ctx.createGain(); ng.gain.value=P.noise;
   n.connect(ng).connect(vGain); n.start(t);
@@ -676,7 +758,8 @@ function noteOn(midi, vel=1, at=null){
   vGain.gain.setTargetAtTime(peak, t, Math.max(0.003,P.atk/3));
   vGain.gain.setTargetAtTime(peak*P.sus, t+P.atk, Math.max(0.01,P.dec/3));
 
-  voices.set(midi,{o1,o2,n,vGain,vf});
+  voices.set(midi,{oscs,n,vGain,vf});
+  lastFreq=f;
   keyEl(midi)?.classList.add('held');
 }
 function noteOff(midi, steal=false, at=null){
@@ -687,7 +770,7 @@ function noteOff(midi, steal=false, at=null){
   v.vGain.gain.cancelScheduledValues(t);
   v.vGain.gain.setTargetAtTime(0, t, tc);
   const stop=t+(steal?0.1:P.rel+0.5);
-  v.o1.stop(stop); v.o2.stop(stop); v.n.stop(stop);
+  v.oscs.forEach(o=>o.stop(stop)); v.n.stop(stop);
   setTimeout(()=>{try{v.vGain.disconnect();v.vf.disconnect();lfoFiltG.disconnect(v.vf.detune)}catch(e){}}, (stop-ctx.currentTime)*1000+100);
 }
 
@@ -708,6 +791,10 @@ const defs=[
    {k:'osc2det',l:'detune',min:-50,max:50,st:1,fmt:v=>Math.round(v)+'c'},
    {k:'osc2lvl',l:'level',min:0,max:1},
    {k:'noise',l:'noise',min:0,max:0.5}]},
+ {t:'VOICE',kn:[
+   {k:'glide',l:'glide',min:0,max:0.6,fmt:v=>v.toFixed(2)+'s'},
+   {k:'unison',l:'unison',min:1,max:7,st:1,fmt:v=>Math.round(v)+'x'},
+   {k:'uniDetune',l:'spread',min:0,max:50,fmt:v=>Math.round(v)+'c'}]},
  {t:'FILTER',kn:[
    {k:'cutoff',l:'cutoff',min:60,max:12000,log:true,fmt:v=>v<1000?Math.round(v)+'Hz':(v/1000).toFixed(1)+'k'},
    {k:'reso',l:'reso',min:0.1,max:18},
@@ -952,10 +1039,8 @@ if(navigator.requestMIDIAccess){
           else if(cmd===0xE0){
             bendC=(((d2<<7)|d1)-8192)/8192*200;
             if(ctx){ const t=ctx.currentTime;
-              voices.forEach(v=>{
-                v.o1.detune.setTargetAtTime(v.o1._baseDet+bendC,t,0.01);
-                v.o2.detune.setTargetAtTime(v.o2._baseDet+bendC,t,0.01);
-              });
+              voices.forEach(v=>v.oscs.forEach(o=>
+                o.detune.setTargetAtTime(o._baseDet+bendC,t,0.01)));
             }
           }
         };

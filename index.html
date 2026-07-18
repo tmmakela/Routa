@@ -6,7 +6,7 @@
 <title>ROUTA — winter synth</title>
 <!--
   ============================================================
-  ROUTA v0.5.3 — Jääportit-style browser synth
+  ROUTA v0.5.4 — Jääportit-style browser synth
   ============================================================
   HANDOFF (read first in a new session):
 
@@ -73,6 +73,12 @@
   - EQ module removed; eqLow/eqHigh/master live as an
     output knob row in the header (#masterSlot), so 8
     modules balance into two rows without orphans.
+  v0.5.4
+  - Five new presets: Halla (glassy pluck), Ahma (drive
+    bass), Tunturi (evolving pad), Kide (bell/mallet),
+    Pakkanen (lead w/ LFO->pitch vibrato). Preset objects
+    still just spread {...P} and override; buttons added
+    to the .presets bar.
 
   NEXT (ideas)
   - Glide/portamento, unison detune
@@ -242,6 +248,11 @@
   <button data-preset="kaamos">Kaamos</button>
   <button data-preset="revontuli">Revontuli</button>
   <button data-preset="huurre">Huurre</button>
+  <button data-preset="halla">Halla</button>
+  <button data-preset="ahma">Ahma</button>
+  <button data-preset="tunturi">Tunturi</button>
+  <button data-preset="kide">Kide</button>
+  <button data-preset="pakkanen">Pakkanen</button>
   <button class="io" id="exportBtn">Export JSON</button>
   <button class="io" id="importBtn">Import JSON</button>
 </div>
@@ -276,7 +287,7 @@
   <div id="kb" role="application" aria-label="Keyboard"></div>
 </div>
 
-<footer>ROUTA v0.5.3 · 8-voice · knobs: drag up/down, Shift = fine, double click = reset · audio starts from POWER or first touch</footer>
+<footer>ROUTA v0.5.4 · 8-voice · knobs: drag up/down, Shift = fine, double click = reset · audio starts from POWER or first touch</footer>
 
 <script>
 'use strict';
@@ -311,7 +322,43 @@ const PRESETS = {
     osc2oct:0, osc2det:-9, osc2lvl:0.3, noise:0.12, cutoff:1200, reso:6,
     fAmt:4800, fAtk:0.003, fDec:0.22, drive:0.45, driveTone:4500, chMix:0.12,
     atk:0.005, dec:0.25, sus:0.2, rel:0.6, dlyTime:0.3, dlyFb:0.45, dlyMix:0.3,
-    rvSize:1.5, rvDecay:2, rvMix:0.25}
+    rvSize:1.5, rvDecay:2, rvMix:0.25},
+  // ---- lisää presettejä ----
+  // Halla: kylmä lasimainen pluck, nopea kirkas filtterisweep + kaiku
+  halla:{...P, osc1wave:'triangle', osc1oct:0, osc1lvl:0.45,
+    osc2wave:'sine', osc2oct:1, osc2det:4, osc2lvl:0.3, noise:0.02,
+    cutoff:2600, reso:5, fAmt:3200, fAtk:0.002, fDec:0.35,
+    lfoRate:0.2, lfoDepth:200, atk:0.004, dec:0.5, sus:0.15, rel:0.9,
+    drive:0.05, chMix:0.2, dlyTime:0.36, dlyFb:0.42, dlyMix:0.32,
+    rvSize:2.5, rvDecay:3, rvMix:0.4},
+  // Ahma: murtava aggressiivinen bassomonsteri, kaksi saha-oscia + drive
+  ahma:{...P, osc1wave:'sawtooth', osc1oct:-1, osc1lvl:0.5,
+    osc2wave:'sawtooth', osc2oct:-1, osc2det:-11, osc2lvl:0.45, noise:0.02,
+    cutoff:900, reso:7, fAmt:2600, fAtk:0.005, fDec:0.28,
+    lfoRate:0.15, lfoDepth:150, atk:0.005, dec:0.3, sus:0.55, rel:0.4,
+    drive:0.5, driveTone:3500, chMix:0.1, eqLow:4,
+    dlyMix:0.08, rvSize:1.2, rvDecay:1.5, rvMix:0.15},
+  // Tunturi: valtava hidas evolving pad, leveä chorus + pitkä kaiku
+  tunturi:{...P, osc1wave:'sawtooth', osc1oct:0, osc1lvl:0.4,
+    osc2wave:'sawtooth', osc2oct:0, osc2det:9, osc2lvl:0.4, noise:0.02,
+    cutoff:1400, reso:2.5, fAmt:1600, fAtk:1.8, fDec:2.5,
+    lfoRate:0.1, lfoDepth:700, atk:1.2, dec:1.5, sus:0.85, rel:3.5,
+    chRate:0.2, chDepth:0.6, chMix:0.4, dlyTime:0.6, dlyFb:0.45, dlyMix:0.28,
+    rvSize:4, rvDecay:5.5, rvMix:0.5},
+  // Kide: kirkas kellomainen mallet, sinit korkealla, plucky decay
+  kide:{...P, osc1wave:'sine', osc1oct:1, osc1lvl:0.45,
+    osc2wave:'sine', osc2oct:2, osc2det:2, osc2lvl:0.28, noise:0,
+    cutoff:4500, reso:3, fAmt:2000, fAtk:0.001, fDec:0.6,
+    lfoRate:0.3, lfoDepth:150, atk:0.002, dec:1.2, sus:0, rel:1.4,
+    chMix:0.25, dlyTime:0.3, dlyFb:0.5, dlyMix:0.35,
+    rvSize:3, rvDecay:4, rvMix:0.45},
+  // Pakkanen: terävä lead pienellä vibratolla (LFO->pitch), drive + delay
+  pakkanen:{...P, osc1wave:'square', osc1oct:0, osc1lvl:0.5,
+    osc2wave:'sawtooth', osc2oct:0, osc2det:6, osc2lvl:0.35, noise:0.01,
+    cutoff:2200, reso:4.5, fAmt:2400, fAtk:0.01, fDec:0.5,
+    lfoRate:5.5, lfoDepth:120, lfoTarget:'pitch', atk:0.01, dec:0.3, sus:0.7, rel:0.5,
+    drive:0.25, chMix:0.15, dlyTime:0.33, dlyFb:0.4, dlyMix:0.28,
+    rvSize:2, rvDecay:2.5, rvMix:0.3}
 };
 
 /* ================= ENGINE ================= */

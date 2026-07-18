@@ -1,0 +1,219 @@
+# ROUTA — kehityksen jatkuvuusdokumentti
+
+> **Lue tämä ensin joka uudessa sessiossa.** Tämä dokumentti kertoo mikä
+> ROUTA on, missä mennään nyt, ja miten työtä jatketaan siitä mihin
+> viimeksi jäätiin. Päivitä **Sessioloki** (alhaalla) aina kun teet
+> muutoksia, niin seuraava kerta pystyy jatkamaan saumattomasti.
+
+**Nykyversio:** v0.6.1
+**Repo:** `tmmakela/Routa` · **Päähaara:** `main` · **Kehityshaara:** `claude/syntikka-projekti-yn2uhl`
+**Koko projekti on yhdessä tiedostossa:** [`index.html`](./index.html)
+
+---
+
+## 1. Mikä ROUTA on
+
+ROUTA on selaimessa toimiva "talvisyntikka" (Jääportit-henkinen). Se on
+tehty **puhtaalla Web Audiolla ilman kirjastoja**, kaikki yhdessä
+HTML-tiedostossa. Estetiikka: pohjoinen / talvinen hardware-paneeli
+(tummansininen, jääsininen ja revontuli-vihreä, fontit Fjalla One +
+IBM Plex Mono).
+
+Ominaisuudet lyhyesti:
+- 8-ääninen polyfonia (osci 1 + osci 2 + kohina per ääni)
+- Per-ääni lowpass-filtteri omalla verhokäyrällä
+- FX-ketju: drive → chorus → delay → reverb → EQ → kompressori
+- LFO (filtteri tai pitch), 16-askeleinen sekvensseri sävellajilukolla
+- Generatiivinen **KAAMOS**-moodi sekvensserissä
+- Näppäimistö (hiiri/kosketus glissandolla, QWERTY, Web MIDI)
+- Kategorisoitu **preset-kirjasto** (LEADS / BASS / PAD / KEYS)
+- Presettien JSON export/import
+
+---
+
+## 2. Miten ajat ja testaat
+
+### Ajaminen
+Avaa `index.html` **Chromessa** (paras tuki; Web MIDI ei toimi Safarissa).
+Paina **POWER** tai kosketa mitä tahansa → AudioContext käynnistyy
+(vaaditaan käyttäjän ele iOS:n takia). Soita Z- ja Q-riveillä tai
+koskettimella.
+
+### Automaattinen tarkistus (headless-selain)
+Ympäristössä on Chromium + Playwright valmiina. Näin tarkistat ettei
+mikään mene rikki (ei JS-virheitä, presetit latautuvat):
+
+```js
+// aja: node check.cjs
+const { chromium } = require('/opt/node22/lib/node_modules/playwright');
+(async () => {
+  const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+  const p = await b.newPage({ viewport:{width:1080,height:940} });
+  const errs=[];
+  p.on('pageerror', e => errs.push('PAGEERROR: '+e.message));
+  await p.goto('file:///home/user/Routa/index.html');
+  await p.waitForTimeout(400);
+  // klikkaa jokainen preset, varmista ettei heitä virhettä
+  const ids = await p.$$eval('#presetLib .pchip', els => els.map(e=>e.dataset.preset));
+  for (const id of ids) { await p.click(`#presetLib .pchip[data-preset="${id}"]`); await p.waitForTimeout(20); }
+  await p.screenshot({ path:'shot.png' });   // silmämääräiseen tarkistukseen
+  console.log('PRESETS:', ids.length, '| ERRORS:', errs.length?errs.join('\n'):'none');
+  await b.close();
+})();
+```
+
+> Huom: konsolissa näkyvä `ERR_CONNECTION_RESET` / "Failed to load resource"
+> on vain Google Fonts -latauksen esto sandboxissa — **ei** koodivirhe.
+> Suodata ne pois kuten aiemmissa tarkistuksissa.
+
+**Tee tämä tarkistus + kuvakaappaus aina ennen committia** kun muutat UI:ta
+tai preset-dataa.
+
+---
+
+## 3. Arkkitehtuuri
+
+Yksityiskohtaisin, aina ajan tasalla oleva kuvaus on `index.html`:n alussa
+olevassa `HANDOFF`-kommentissa (rivit ~7–102) sekä versiokohtaisessa
+changelogissa. Tässä tiivistys signaalireitistä:
+
+```
+Voice(osc1 + osc2 + noise)
+  -> voiceGain (ADSR: atk/dec/sus/rel)
+  -> vf: per-ääni lowpass + AD-verhokäyrä (detune-centteinä)
+  -> bus
+     -> DRIVE (WaveShaper, curve (1+k)x/(1+k|x|), k=drive*60, 2x -> tone LP)
+     -> CHORUS (2 moduloitua delaylinjaa L/R + feedback)
+     -> dry + delaySend + reverbSend
+     -> EQ (lowshelf 250 Hz / highshelf 4 kHz)
+     -> DynamicsCompressor (glue: -18 dB, 3:1, knee 12)
+  -> master -> analyser -> destination
+```
+
+- **LFO:** yksi oskillaattori, kohde `filter` tai `pitch`, kytketty per ääni.
+- **Polyfonia:** max 8 (`MAXV`), vanhin ääni varastetaan.
+- **Sekvensseri:** 16 askelta, lookahead-scheduler (setInterval 30 ms,
+  120 ms ikkuna). KAAMOS = generatiivinen satunnaiskävely sävellajissa.
+- **Ei localStoragea** (ei toimi Claude-artifacteissa) → presetit ovat
+  muistissa + JSON-tiedostoina.
+
+### Parametrit (objekti `P`)
+Kaikki äänen parametrit ovat yhdessä objektissa `P` (oletukset
+`DEFAULTS`). Preset = `P`:n kopio jossa osa arvoista ylikirjoitettu.
+
+| Ryhmä | Kentät |
+|-------|--------|
+| Osc 1 | `osc1wave, osc1oct, osc1lvl` |
+| Osc 2 | `osc2wave, osc2oct, osc2det` (centtiä), `osc2lvl` |
+| Kohina | `noise` |
+| Filtteri | `cutoff, reso`, verhokäyrä `fAmt, fAtk, fDec` |
+| LFO | `lfoRate, lfoDepth, lfoTarget` (`'filter'`/`'pitch'`) |
+| Amp ADSR | `atk, dec, sus, rel` |
+| Delay | `dlyTime, dlyFb, dlyMix` |
+| Reverb | `rvSize, rvDecay, rvMix` |
+| Drive | `drive, driveTone` |
+| Chorus | `chRate, chDepth, chFb, chMix` |
+| EQ / Master | `eqLow, eqHigh, master` |
+
+> `lfoTarget:'pitch'` → efektiivinen vibrato = `lfoDepth * 0.05` senttiä.
+> Esim. `lfoDepth:120` ≈ 6 senttiä. LFO on aina päällä (ei onset-viivettä).
+
+---
+
+## 4. Preset-järjestelmä (miten lisätään uusia)
+
+Kaksi rakennetta, molemmat `index.html`:n `<script>`-lohkossa:
+
+1. **`PRESETS`** — litteä `id → parametrit` -objekti. Jokainen preset
+   levittää oletukset ja ylikirjoittaa: `{...P, cutoff:3200, ...}`.
+2. **`LIBRARY`** — kategorioiden metadata, määrää mitä ja missä
+   järjestyksessä palkissa näkyy:
+   ```js
+   { cat:'LEADS', items:[ {id:'tulikettu', name:'Tulikettu'}, ... ] }
+   ```
+
+`buildPresetBar()` renderöi palkin `LIBRARY`:sta. Kategorian accent-väri
+tulee `CAT_ACCENT`-mäpistä (→ `:root`-muuttuja `--acc-lead/bass/pad/keys`).
+
+### Uuden presetin lisäys
+1. Lisää parametrit `PRESETS`-objektiin uudella id:llä.
+2. Listaa se `LIBRARY`-taulukossa haluttuun kategoriaan (`{id, name}`).
+3. Nappi tulee automaattisesti. Aja tarkistus + kuvakaappaus.
+
+### Uuden kategorian lisäys
+1. Määrittele accent-väri `:root`:iin (esim. `--acc-fx:#....`).
+2. Lisää se `CAT_ACCENT`-mäppiin (`FX:'var(--acc-fx)'`).
+3. Lisää uusi ryhmä `LIBRARY`-taulukkoon.
+
+### Nimeämiskäytäntö
+Presetit ovat suomalaisia/pohjoisia teemanimiä (Halla, Ahma, Tunturi,
+Revontuli, Tulikettu…). Pidä id pienellä ja ilman ääkkösiä
+(`tera`, `id` ≠ näyttönimi `Terä`).
+
+---
+
+## 5. Nykytila — mitä on tehty
+
+- ✅ Ydinsyntikka + FX-ketju + sekvensseri + näppäimistö + MIDI (≤ v0.5.3)
+- ✅ **Preset-kirjasto kategorisoituna** (v0.6.0): LEADS / BASS / PAD / KEYS
+- ✅ **Vahva LEADS-setti** (9): Tulikettu, Terä, Sisu, Kaiku, Loitsu,
+  Hehku, Ukko, Viima, Pakkanen
+- ✅ **Kirjaston visuaalinen uudistus** (v0.6.1): kehystetty paneeli,
+  värikoodatut kategoriat, hehkuvat chipit, aktiivisen presetin korostus
+- ⚠️ BASS (1), PAD (4), KEYS (3) — kevyempiä, kaipaavat täydennystä
+
+---
+
+## 6. Roadmap / NEXT (mistä jatkaa)
+
+Priorisoitu; poimi ylhäältä. (`index.html`:n "NEXT (ideas)" -lista on sama.)
+
+1. **Täydennä kirjastoa** — BASS-, PAD- ja KEYS-setit yhtä vahvoiksi kuin
+   LEADS (tavoite esim. 6–8 per kategoria). Ehkä uudet kategoriat: PLUCK, FX.
+2. **Glide / portamento** — monofoninen liuku nuottien välillä; tekisi
+   leadeista ilmaisuvoimaisempia (`glide`-parametri + `setTargetAtTime`).
+3. **Unison-detune** — paksuunna ääntä useammalla viritetyllä oscilla.
+4. **Sekvenssi presettiin** — nyt JSON tallentaa vain synaparametrit,
+   ei sekvenssin askelia; lisää `seq.steps` export/importiin.
+5. **Preset-kategoria JSONiin** — export/import muistaisi kategorian.
+6. **WAV-tallennus** — MediaRecorder masterista → lataa tiedostona.
+7. **AudioWorklet drive/foldback** — rosoisempaa säröä.
+
+---
+
+## 7. Työskentelytapa (git & versiointi)
+
+- **Kehitä** haarassa `claude/syntikka-projekti-yn2uhl`; käyttäjän toive on
+  että muutokset viedään **suoraan `main`iin** (ei erillistä uploadia).
+  Käytäntö tähän asti: commit → push `main` → `git branch -f` kehityshaara
+  mainiin → push kehityshaara (pidetään synkassa).
+- **Versiointi:** nosta versionumero neljässä paikassa:
+  `index.html`-kommentin otsikko (rivi ~9), changelog-lohko,
+  `<div class="badge">`, ja footer. Semverin henki: uusi feature = minor
+  (0.6→0.7), hienosäätö/korjaus = patch (0.6.1→0.6.2).
+- **Changelog:** lisää versiolohko `index.html`:n kommenttiin
+  (arkkitehtoniset yksityiskohdat) JA rivi tämän dokumentin Sessiolokiin.
+- **Testaa** aina headless-tarkistuksella + kuvakaappauksella ennen pushia.
+- Älä laita mallin id:tä / sisäisiä yksityiskohtia committeihin tai koodiin.
+
+---
+
+## 8. Sessioloki
+
+> Uusin ylimmäs. Merkitse: päivä, versio, mitä tehtiin, mihin jäätiin.
+
+### 2026-07-18 · v0.5.4 → v0.6.1
+- **v0.5.4:** 5 uutta presettiä (Halla, Ahma, Tunturi, Kide, Pakkanen).
+- **v0.6.0:** Presetit kategorisoituun kirjastoon (`LIBRARY` + `CAT_ACCENT`
+  + `buildPresetBar()`); lisätty koko LEADS-setti (8 uutta + Pakkanen).
+- **v0.6.1:** Kirjaston visuaalinen uudistus — kehystetty `.preslib`-paneeli,
+  otsikko + EXPORT/IMPORT, värikoodatut kategoria-accentit, `.pchip`-chipit
+  reunavalolla ja aktiivisen hehkulla. Testattu desktop + mobiili, ei virheitä.
+- **Luotu tämä `HANDOFF.md`.**
+- **Seuraavaksi:** täydennä BASS/PAD/KEYS-setit (Roadmap kohta 1), tai
+  aloita glide/portamento (kohta 2).
+
+### (aiemmat, ennen jatkuvuusdokumenttia)
+- v0.4.0–v0.5.3: UI-uudistus (rotary-knobit), FX-ketju (drive/chorus/eq/
+  komp), iPad- ja puhelinlayoutit, EQ siirretty headeriin. Ks.
+  `index.html`-changelog.

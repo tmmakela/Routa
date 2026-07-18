@@ -6,7 +6,7 @@
 <title>ROUTA — winter synth</title>
 <!--
   ============================================================
-  ROUTA v0.7.2 — Jääportit-style browser synth
+  ROUTA v0.7.3 — Jääportit-style browser synth
   ============================================================
   HANDOFF (read first in a new session):
   >> See HANDOFF.md in the repo root for the full continuity
@@ -157,9 +157,19 @@
     16-bit samples at ctx.sampleRate. toggleRec() flips state,
     swaps REC/STOP, and on stop builds the Blob + downloads
     routa-take.wav.
+  v0.7.3 FULL PROJECT SAVE (params + sequence)
+  - Export/import now bundle the sequencer too. Export writes
+    {routa, params:{...P}, seq:{bpm,gate,root,scale,kaamos,
+    steps}}; import detects a bundle (obj.params) and calls
+    loadPreset(params)+applySeq(seq), else falls back to the
+    old flat-P format (back-compatible; preset-bar buttons
+    still pass flat params).
+  - applySeq() MUTATES existing seq.steps objects in place
+    (deg/on) instead of replacing the array, so the per-step
+    click handlers' closures stay valid. syncSeqUI() refreshes
+    bpm/gate/root/scale/kaamos + step selects & gate states.
 
   NEXT (ideas)
-  - Save sequence into preset JSON (now synth params only)
   - Easy view (macro knobs) / guided first-use
   - AudioWorklet drive/foldback for grit
   ============================================================
@@ -402,7 +412,7 @@
 <header>
   <div class="title"><h1>ROUTA</h1><p>WINTER SYNTH</p></div>
   <canvas id="scope" width="1400" height="112"></canvas>
-  <div class="badge">v0.7.2</div>
+  <div class="badge">v0.7.3</div>
   <div id="masterSlot"></div>
   <button id="rec" aria-label="Record to WAV">● REC</button>
   <button id="power" aria-label="Power on audio engine">POWER</button>
@@ -451,7 +461,7 @@
   <div id="kb" role="application" aria-label="Keyboard"></div>
 </div>
 
-<footer>ROUTA v0.7.2 · 8-voice · knobs: drag up/down, Shift = fine, double click = reset · audio starts from POWER or first touch</footer>
+<footer>ROUTA v0.7.3 · 8-voice · knobs: drag up/down, Shift = fine, double click = reset · audio starts from POWER or first touch</footer>
 
 <script>
 'use strict';
@@ -1323,6 +1333,30 @@ function refreshStepSelects(setVals=false){
       el.querySelector('.gate').classList.toggle('on',seq.steps[i].on);}
   });
 }
+// tuo sekvenssi presetistä: mutatoi step-objektit paikallaan (säilyttää kytkennät)
+function applySeq(s){
+  if(!s) return;
+  if(s.bpm!=null) seq.bpm=+s.bpm;
+  if(s.gate!=null) seq.gate=+s.gate;
+  if(s.root!=null) seq.root=+s.root;
+  if(s.scale && SCALES[s.scale]) seq.scale=s.scale;
+  if(typeof s.kaamos==='boolean') seq.kaamos=s.kaamos;
+  if(Array.isArray(s.steps)) s.steps.forEach((st,i)=>{
+    if(seq.steps[i]){ seq.steps[i].deg=+st.deg||0; seq.steps[i].on=!!st.on; }
+  });
+  syncSeqUI();
+}
+function syncSeqUI(){
+  const bpm=document.getElementById('seqBpm'); bpm.value=seq.bpm;
+  document.getElementById('seqBpmOut').textContent=seq.bpm;
+  const g=Math.round(seq.gate*100);
+  document.getElementById('seqGate').value=g;
+  document.getElementById('seqGateOut').textContent=g+'%';
+  document.getElementById('seqRoot').value=seq.root;
+  document.getElementById('seqScale').value=seq.scale;
+  document.getElementById('seqKaamos').classList.toggle('on',seq.kaamos);
+  refreshStepSelects(true);
+}
 
 /* ================= PRESET-KIRJASTO UI ================= */
 const CAT_ACCENT={LEADS:'var(--acc-lead)', BASS:'var(--acc-bass)',
@@ -1351,14 +1385,21 @@ function buildPresetBar(){
   });
 }
 document.getElementById('exportBtn').addEventListener('click',()=>{
-  const blob=new Blob([JSON.stringify(P,null,2)],{type:'application/json'});
+  const data={ routa:'0.7.3', params:{...P},
+    seq:{ bpm:seq.bpm, gate:seq.gate, root:seq.root, scale:seq.scale,
+          kaamos:seq.kaamos, steps:seq.steps.map(s=>({deg:s.deg,on:s.on})) } };
+  const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
   const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
   a.download='routa-preset.json'; a.click(); URL.revokeObjectURL(a.href);
 });
 document.getElementById('importBtn').addEventListener('click',()=>{
   const inp=document.createElement('input'); inp.type='file'; inp.accept='.json,application/json';
   inp.onchange=()=>{ const f=inp.files[0]; if(!f)return;
-    f.text().then(t=>{ try{ loadPreset(JSON.parse(t)); }catch(e){ alert('Invalid JSON: '+e.message); } });
+    f.text().then(t=>{ try{
+      const obj=JSON.parse(t);
+      if(obj && obj.params){ loadPreset(obj.params); applySeq(obj.seq); } // uusi bundle
+      else loadPreset(obj);                                              // vanha litteä P
+    }catch(e){ alert('Invalid JSON: '+e.message); } });
   };
   inp.click();
 });

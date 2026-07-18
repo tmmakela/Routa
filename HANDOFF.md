@@ -5,7 +5,7 @@
 > viimeksi jäätiin. Päivitä **Sessioloki** (alhaalla) aina kun teet
 > muutoksia, niin seuraava kerta pystyy jatkamaan saumattomasti.
 
-**Nykyversio:** v0.7.2
+**Nykyversio:** v0.7.3
 **Repo:** `tmmakela/Routa` · **Päähaara:** `main` · **Kehityshaara:** `claude/syntikka-projekti-yn2uhl`
 **Koko projekti on yhdessä tiedostossa:** [`index.html`](./index.html)
 
@@ -176,8 +176,7 @@ Priorisoitu; poimi ylhäältä. (`index.html`:n "NEXT (ideas)" -lista on sama.)
    Ehkä uudet kategoriat: PLUCK, FX.
 2. ~~Glide / portamento~~ — ✅ tehty v0.7.0 (`glide`-param, `exponentialRampToValueAtTime`).
 3. ~~Unison-detune~~ — ✅ tehty v0.7.0 (`unison` + `uniDetune`, supersaw).
-4. **Sekvenssi presettiin** — nyt JSON tallentaa vain synaparametrit,
-   ei sekvenssin askelia; lisää `seq.steps` export/importiin.
+4. ~~Sekvenssi presettiin~~ — ✅ tehty v0.7.3 (export/import niputtaa seq:n).
 5. **Preset-kategoria JSONiin** — export/import muistaisi kategorian.
 6. ~~WAV-tallennus~~ — ✅ tehty v0.7.2 (ScriptProcessor-tap + encodeWAV).
 7. **AudioWorklet drive/foldback** — rosoisempaa säröä (ja WAV-tap workletiksi).
@@ -205,6 +204,18 @@ Priorisoitu; poimi ylhäältä. (`index.html`:n "NEXT (ideas)" -lista on sama.)
 ## 8. Sessioloki
 
 > Uusin ylimmäs. Merkitse: päivä, versio, mitä tehtiin, mihin jäätiin.
+
+### 2026-07-18 (jatko 5) · v0.7.3 — Koko projektin tallennus (params + sekvenssi)
+- Export/import niputtaa nyt myös sekvensserin. Export: `{routa, params:{...P},
+  seq:{bpm,gate,root,scale,kaamos,steps}}`. Import tunnistaa bundlen (`obj.params`)
+  → `loadPreset(params)` + `applySeq(seq)`; muuten vanha litteä P (taaksepäin-
+  yhteensopiva; preset-nappien litteät objektit toimivat yhä).
+- `applySeq()` **mutatoi** `seq.steps`-objektit paikallaan (ei korvaa taulukkoa),
+  jotta step-kahvojen closuret pysyvät ehjinä. `syncSeqUI()` päivittää
+  bpm/gate/root/scale/kaamos + step-selectit ja gate-tilat.
+- Testattu koko kierto (filechooser): export sisältää params+seq, import palauttaa
+  bpm/root/scale/stepit/paramit, vanha litteä formaatti latautuu yhä. 0 virhettä.
+- **Seuraavaksi:** Easy-tila / ohjaava ensikäyttö, tai AudioWorklet-särö.
 
 ### 2026-07-18 (jatko 4) · v0.7.2 — WAV-nauhoitus
 - **REC-nappi** headerissa (POWERin vieressä): nauhoittaa master-ulostulon

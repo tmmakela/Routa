@@ -6,7 +6,7 @@
 <title>ROUTA — winter synth</title>
 <!--
   ============================================================
-  ROUTA v0.7.4 — Jääportit-style browser synth
+  ROUTA v0.7.5 — Jääportit-style browser synth
   ============================================================
   HANDOFF (read first in a new session):
   >> See HANDOFF.md in the repo root for the full continuity
@@ -180,6 +180,15 @@
     selects, gates 30px, octave buttons.
   - Landscape (orientation:landscape) uses a shorter 165px
     keyboard to leave more room for the modules.
+  v0.7.5 COMPACT PRESET LIBRARY (tabs)
+  - The 4 stacked category rows became a single tab bar: the
+    header now holds PRESETS + category tabs (.ptab, count +
+    accent colour) + icon-only export/import; only the active
+    category's chips render below. Panel height ~185->77px
+    desktop (~230->92px iPad).
+  - JS: activeCat + curPreset state; buildPresetBar() renders
+    tabs, renderChips() paints the active category and keeps
+    the loaded preset highlighted across tab switches.
 
   NEXT (ideas)
   - Easy view (macro knobs) / guided first-use
@@ -241,29 +250,32 @@
   .presets{width:100%;max-width:1060px;padding:4px 12px 8px}
   .preslib{background:linear-gradient(180deg,#0F1721,#0B1119);
     border:1px solid var(--edge);border-radius:6px;
-    padding:10px 12px 11px;position:relative;overflow:hidden}
+    padding:7px 10px 8px;position:relative;overflow:hidden}
   .preslib::before{content:'';position:absolute;inset:0;pointer-events:none;
     background:radial-gradient(120% 90% at 8% -20%,rgba(127,212,232,.05),transparent 55%)}
-  .preshead{display:flex;justify-content:space-between;align-items:center;
-    margin-bottom:9px;padding-bottom:7px;border-bottom:1px solid var(--edge);
+  /* kompakti otsikkorivi: nimi + kategoriavälilehdet + io-ikonit */
+  .preshead{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+    margin-bottom:7px;padding-bottom:6px;border-bottom:1px solid var(--edge);
     position:relative}
-  .preshead h2{font-family:'Fjalla One',sans-serif;font-size:12px;
-    letter-spacing:.3em;color:var(--frost);display:flex;align-items:center;gap:8px}
-  .preshead h2::before{content:'';width:6px;height:6px;border-radius:50%;
-    background:var(--ice);box-shadow:0 0 8px var(--ice)}
-  .presio{display:flex;gap:6px}
+  .preshead h2{font-family:'Fjalla One',sans-serif;font-size:10px;
+    letter-spacing:.24em;color:var(--dim);display:flex;align-items:center;gap:6px}
+  .preshead h2::before{content:'';width:5px;height:5px;border-radius:50%;
+    background:var(--ice);box-shadow:0 0 7px var(--ice)}
+  .ptabs{display:flex;flex-wrap:wrap;gap:4px;flex:1}
+  .ptab{--cat:var(--ice);background:transparent;border:1px solid var(--edge);
+    border-radius:4px;color:var(--dim);font:inherit;font-size:10px;
+    letter-spacing:.1em;padding:4px 10px;cursor:pointer;display:flex;
+    align-items:center;gap:5px;transition:color .12s,border-color .12s,box-shadow .12s}
+  .ptab .tcnt{font-size:8px;opacity:.6}
+  .ptab:hover{color:var(--frost);border-color:var(--cat)}
+  .ptab.on{color:var(--cat);border-color:var(--cat);
+    box-shadow:0 0 10px -3px var(--cat),inset 0 0 0 1px rgba(255,255,255,.02)}
+  .presio{display:flex;gap:4px}
   .io{background:transparent;color:var(--dim);border:1px solid var(--edge);
-    border-radius:3px;font:inherit;font-size:9px;letter-spacing:.12em;
-    padding:5px 11px;cursor:pointer;transition:color .12s,border-color .12s}
+    border-radius:3px;font:inherit;font-size:13px;line-height:1;
+    padding:3px 9px;cursor:pointer;transition:color .12s,border-color .12s}
   .io:hover{border-color:var(--ice);color:var(--ice)}
-  .lib{display:flex;flex-direction:column;gap:7px;position:relative}
-  .catrow{display:grid;grid-template-columns:82px 1fr;gap:12px;align-items:start}
-  .cathd{display:flex;align-items:center;gap:7px;min-height:28px;padding-top:1px}
-  .cathd .bar{width:3px;align-self:stretch;min-height:16px;border-radius:2px;
-    background:var(--cat);box-shadow:0 0 7px -1px var(--cat)}
-  .cathd .nm{font-size:9px;letter-spacing:.2em;color:var(--cat);font-weight:500}
-  .cathd .cnt{font-size:8px;color:var(--dim);opacity:.55;margin-left:1px}
-  .catchips{display:flex;flex-wrap:wrap;gap:5px}
+  .lib{display:flex;flex-wrap:wrap;gap:5px;position:relative}
   .pchip{position:relative;overflow:hidden;
     background:linear-gradient(180deg,#131E2A,#0C131D);
     border:1px solid var(--edge);border-radius:4px;color:var(--frost);
@@ -460,7 +472,7 @@
 <header>
   <div class="title"><h1>ROUTA</h1><p>WINTER SYNTH</p></div>
   <canvas id="scope" width="1400" height="112"></canvas>
-  <div class="badge">v0.7.4</div>
+  <div class="badge">v0.7.5</div>
   <div id="masterSlot"></div>
   <button id="rec" aria-label="Record to WAV">● REC</button>
   <button id="power" aria-label="Power on audio engine">POWER</button>
@@ -469,10 +481,11 @@
 <div class="presets">
   <div class="preslib">
     <div class="preshead">
-      <h2>PRESET LIBRARY</h2>
+      <h2>PRESETS</h2>
+      <div id="presetTabs" class="ptabs"></div>
       <div class="presio">
-        <button class="io" id="exportBtn">↧ EXPORT</button>
-        <button class="io" id="importBtn">↥ IMPORT</button>
+        <button class="io" id="exportBtn" title="Export JSON" aria-label="Export JSON">↧</button>
+        <button class="io" id="importBtn" title="Import JSON" aria-label="Import JSON">↥</button>
       </div>
     </div>
     <div id="presetLib" class="lib"></div>
@@ -509,7 +522,7 @@
   <div id="kb" role="application" aria-label="Keyboard"></div>
 </div>
 
-<footer>ROUTA v0.7.4 · 8-voice · knobs: drag up/down, Shift = fine, double click = reset · audio starts from POWER or first touch</footer>
+<footer>ROUTA v0.7.5 · 8-voice · knobs: drag up/down, Shift = fine, double click = reset · audio starts from POWER or first touch</footer>
 
 <script>
 'use strict';
@@ -1406,31 +1419,44 @@ function syncSeqUI(){
   refreshStepSelects(true);
 }
 
-/* ================= PRESET-KIRJASTO UI ================= */
+/* ================= PRESET-KIRJASTO UI (kompakti, välilehdet) ================= */
 const CAT_ACCENT={LEADS:'var(--acc-lead)', BASS:'var(--acc-bass)',
                   PAD:'var(--acc-pad)',   KEYS:'var(--acc-keys)'};
-function buildPresetBar(){
+let activeCat=LIBRARY[0].cat, curPreset=null;
+function renderChips(){
   const lib=document.getElementById('presetLib');
+  const group=LIBRARY.find(g=>g.cat===activeCat)||LIBRARY[0];
+  lib.style.setProperty('--cat', CAT_ACCENT[group.cat]||'var(--ice)');
   lib.innerHTML='';
-  LIBRARY.forEach(group=>{
-    const row=document.createElement('div'); row.className='catrow';
-    row.style.setProperty('--cat', CAT_ACCENT[group.cat]||'var(--ice)');
-    const hd=document.createElement('div'); hd.className='cathd';
-    hd.innerHTML=`<span class="bar"></span><span class="nm">${group.cat}</span>`+
-                 `<span class="cnt">${group.items.length}</span>`;
-    const chips=document.createElement('div'); chips.className='catchips';
-    group.items.forEach(it=>{
-      const b=document.createElement('button');
-      b.className='pchip'; b.textContent=it.name; b.dataset.preset=it.id;
-      b.addEventListener('click',()=>{
-        loadPreset(PRESETS[it.id]);
-        lib.querySelectorAll('.pchip').forEach(x=>x.classList.remove('on'));
-        b.classList.add('on');
-      });
-      chips.appendChild(b);
+  group.items.forEach(it=>{
+    const b=document.createElement('button');
+    b.className='pchip'+(it.id===curPreset?' on':''); b.textContent=it.name;
+    b.dataset.preset=it.id;
+    b.addEventListener('click',()=>{
+      loadPreset(PRESETS[it.id]); curPreset=it.id;
+      lib.querySelectorAll('.pchip').forEach(x=>x.classList.remove('on'));
+      b.classList.add('on');
     });
-    row.appendChild(hd); row.appendChild(chips); lib.appendChild(row);
+    lib.appendChild(b);
   });
+}
+function buildPresetBar(){
+  const tabs=document.getElementById('presetTabs');
+  tabs.innerHTML='';
+  LIBRARY.forEach(group=>{
+    const t=document.createElement('button');
+    t.className='ptab'+(group.cat===activeCat?' on':'');
+    t.style.setProperty('--cat', CAT_ACCENT[group.cat]||'var(--ice)');
+    t.innerHTML=`${group.cat}<span class="tcnt">${group.items.length}</span>`;
+    t.addEventListener('click',()=>{
+      activeCat=group.cat;
+      tabs.querySelectorAll('.ptab').forEach(x=>x.classList.remove('on'));
+      t.classList.add('on');
+      renderChips();
+    });
+    tabs.appendChild(t);
+  });
+  renderChips();
 }
 document.getElementById('exportBtn').addEventListener('click',()=>{
   const data={ routa:'0.7.3', params:{...P},

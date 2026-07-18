@@ -5,7 +5,7 @@
 > viimeksi jäätiin. Päivitä **Sessioloki** (alhaalla) aina kun teet
 > muutoksia, niin seuraava kerta pystyy jatkamaan saumattomasti.
 
-**Nykyversio:** v0.7.4
+**Nykyversio:** v0.7.5
 **Repo:** `tmmakela/Routa` · **Päähaara:** `main` · **Kehityshaara:** `claude/syntikka-projekti-yn2uhl`
 **Koko projekti on yhdessä tiedostossa:** [`index.html`](./index.html)
 
@@ -204,6 +204,18 @@ Priorisoitu; poimi ylhäältä. (`index.html`:n "NEXT (ideas)" -lista on sama.)
 ## 8. Sessioloki
 
 > Uusin ylimmäs. Merkitse: päivä, versio, mitä tehtiin, mihin jäätiin.
+
+### 2026-07-18 (jatko 7) · v0.7.5 — Kompakti preset-kirjasto (välilehdet)
+- 4 pinottua kategoriariviä → yksi välilehtipalkki. Otsikkorivi: PRESETS +
+  kategoriavälilehdet (`.ptab`, count + accent-väri) + ikoni-export/import;
+  vain aktiivisen kategorian chipit näkyvät alla.
+- Paneelin korkeus ~185→77px (desktop), ~230→92px (iPad).
+- JS: `activeCat` + `curPreset` tila; `buildPresetBar()` piirtää välilehdet,
+  `renderChips()` aktiivisen kategorian, ja ladattu preset pysyy korostettuna
+  välilehteä vaihdettaessa.
+- Testattu: 4 välilehteä, kategorian vaihto näyttää oikeat chipit, lataus +
+  korostus säilyy, korkeus tippui. 0 virhettä.
+- **Seuraavaksi:** Easy-tila / ohjaava ensikäyttö, tai AudioWorklet-särö.
 
 ### 2026-07-18 (jatko 6) · v0.7.4 — iPad/tablet-optimointi
 - Uusi `@media (pointer:coarse) and (min-width:601px)` -lohko (tabletit; puhelimet

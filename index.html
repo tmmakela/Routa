@@ -1,0 +1,926 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>ROUTA — winter synth</title>
+<!--
+  ============================================================
+  ROUTA v0.5.3 — Jääportit-style browser synth
+  ============================================================
+  HANDOFF (read first in a new session):
+
+  ARCHITECTURE
+  - Pure Web Audio, no libraries. Single file.
+  - Voice(osc1+osc2+noise -> voiceGain ADSR
+      -> vf: per-voice lowpass + AD env via detune cents)
+      -> bus -> dry -> master
+      bus -> delaySend -> delay+feedback -> master
+      bus -> reverbSend -> convolver (procedural IR) -> master
+      master -> analyser -> destination
+  - LFO: one oscillator, target filter or pitch, wired per voice.
+    Envelope sets vf.detune value, LFO sums as an input.
+  - Polyphony max 8, oldest voice stolen.
+  - AudioContext created/resumed only on user gesture (iOS).
+  - Keys: pointer events (glissando works), QWERTY Z+Q rows,
+    arrow up/down shifts octave. Web MIDI: notes + velocity,
+    mod wheel CC1 -> LFO depth, pitch bend +/-200 c
+    (bendC + o._baseDet). No MIDI in Safari; open the file
+    directly in Chrome, artifact preview iframe may block MIDI.
+  - Sequencer: 16 steps, scale lock (aeolian/dorian/phrygian/
+    minor penta), Web Audio clock lookahead scheduler
+    (setInterval 30 ms, 120 ms window, noteOn/noteOff take an
+    `at` time). KAAMOS mode: generative random walk in scale,
+    quarter notes, 40% trigger probability, long gate.
+  - Presets: in-memory + JSON export/import
+    (NO localStorage, does not work in Claude artifacts).
+
+  v0.4.0 UI REWORK
+  - Compact hardware-panel layout, rotary knobs
+    (refs: Minimoog, Prophet-5, Massive, Predator 2).
+  - Knob interaction: vertical drag, Shift = fine,
+    double click = reset to default. English labels.
+  - Knob component: makeKnob() in JS, indicator rotates
+    -135..+135 deg, value readout under label.
+  v0.4.1
+  - Modules size to content (flex wrap, knrow nowrap on
+    desktop) so REVERB no longer orphans to a second row.
+  - Master volume moved to header knob (Massive-style),
+    7 modules remain.
+  - Wave selects replaced with SVG icon buttons (WICONS),
+    LFO target with FILT/PITCH buttons; defs use `btns`,
+    ctrls[k].set toggles the .on class.
+  v0.5.0 FX CHAIN
+  - Signal: voices -> bus -> DRIVE (WaveShaper, curve
+    (1+k)x/(1+k|x|), k=drive*60, oversample 2x -> tone LP)
+    -> CHORUS (2 mod delay lines 12/17 ms, shared sine LFO,
+    inverted gain on R for width, ChannelMerger stereo,
+    feedback -> flanger territory at high fb + rate)
+    -> dry + delay/reverb sends -> EQ (lowshelf 250 Hz,
+    highshelf 4 kHz, +/-12 dB) -> DynamicsCompressor
+    (fixed glue: -18 dB, 3:1, knee 12) -> master.
+  - New modules: DRIVE (amount/tone), CHORUS (rate/depth/
+    feedback/mix), EQ (low/high). Compressor has no UI.
+  v0.5.1
+  - @media (pointer:coarse): keyboard 210 px tall, bigger
+    knobs and key hints for iPad/touch.
+  v0.5.2 PHONE LAYOUT
+  - @media (max-width:600px): sticky keyboard at bottom
+    (always reachable while scrolling), modules in a 2-col
+    grid with 32 px knobs, module h2 tap toggles .closed
+    (collapse) on narrow screens only.
+  v0.5.3
+  - EQ module removed; eqLow/eqHigh/master live as an
+    output knob row in the header (#masterSlot), so 8
+    modules balance into two rows without orphans.
+
+  NEXT (ideas)
+  - Glide/portamento, unison detune
+  - Save sequence into preset JSON (now synth params only)
+  - WAV capture (MediaRecorder from master)
+  - AudioWorklet drive/foldback for grit
+  ============================================================
+-->
+<link href="https://fonts.googleapis.com/css2?family=Fjalla+One&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --night:#0A0F16; --panel:#101823; --panel2:#0C131D;
+    --edge:#1C2938; --frost:#C9D7E2; --dim:#6E8296;
+    --ice:#7FD4E8; --aurora:#63B98C;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{background:var(--night);color:var(--frost);
+    font-family:'IBM Plex Mono',monospace;font-size:12px;overscroll-behavior:none}
+  body{min-height:100svh;display:flex;flex-direction:column;align-items:center}
+
+  /* ---------- header / scope ---------- */
+  header{width:100%;max-width:1060px;position:relative;padding:12px 12px 4px;
+    display:flex;align-items:center;gap:14px}
+  .title h1{font-family:'Fjalla One',sans-serif;font-size:26px;
+    letter-spacing:.14em;line-height:1;text-shadow:0 0 20px rgba(127,212,232,.25)}
+  .title p{color:var(--dim);font-size:9px;letter-spacing:.22em;margin-top:2px}
+  #scope{flex:1;height:56px;min-width:0;border-radius:4px;
+    background:linear-gradient(180deg,#0B1420,#0A0F16)}
+  .badge{color:var(--dim);font-size:9px;letter-spacing:.15em}
+  #power{font:inherit;font-size:10px;letter-spacing:.15em;
+    background:transparent;color:var(--ice);border:1px solid var(--ice);
+    border-radius:3px;padding:6px 12px;cursor:pointer}
+  #power.on{color:var(--night);background:var(--ice)}
+  #masterSlot{display:flex;gap:0}
+
+  /* ---------- preset bar ---------- */
+  .presets{width:100%;max-width:1060px;padding:2px 12px 6px;
+    display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+  .presets span{color:var(--dim);font-size:9px;letter-spacing:.18em}
+  .presets button{background:transparent;color:var(--frost);
+    border:1px solid var(--edge);border-radius:3px;
+    font:inherit;font-size:10px;padding:4px 10px;cursor:pointer}
+  .presets button:hover{border-color:var(--ice);color:var(--ice)}
+  .presets button.io{color:var(--dim)}
+
+  /* ---------- panel / modules ---------- */
+  main{width:100%;max-width:1060px;padding:0 12px;
+    display:flex;flex-wrap:wrap;gap:6px;justify-content:center}
+  .mod{background:var(--panel);border:1px solid var(--edge);
+    border-radius:5px;padding:8px 8px 6px;flex:1 1 auto;max-width:100%}
+  .mod h2{font-family:'Fjalla One',sans-serif;font-size:10px;
+    letter-spacing:.22em;color:var(--dim);margin-bottom:6px;
+    border-bottom:1px solid var(--edge);padding-bottom:4px}
+  .btnrow{display:flex;gap:3px;margin-bottom:5px;justify-content:center}
+  .wbtn{background:var(--night);border:1px solid var(--edge);border-radius:3px;
+    padding:3px 6px;cursor:pointer;display:flex;align-items:center;justify-content:center;
+    color:var(--dim);font:inherit;font-size:8px;letter-spacing:.08em}
+  .wbtn svg{display:block;stroke:var(--dim);fill:none;stroke-width:1.6;stroke-linecap:round}
+  .wbtn.on{border-color:var(--ice);color:var(--ice);
+    box-shadow:0 0 6px rgba(127,212,232,.25) inset}
+  .wbtn.on svg{stroke:var(--ice)}
+  .wbtn:focus-visible{outline:2px solid var(--ice);outline-offset:1px}
+  select{background:var(--night);color:var(--frost);border:1px solid var(--edge);
+    border-radius:3px;font:inherit;font-size:10px;padding:2px 3px;flex:1;min-width:0}
+  .knrow{display:flex;flex-wrap:nowrap;gap:2px;justify-content:center}
+  @media (max-width:640px){ .knrow{flex-wrap:wrap} }
+  .kn{display:flex;flex-direction:column;align-items:center;width:50px;padding:2px 0}
+  .knob{width:34px;height:34px;border-radius:50%;position:relative;cursor:ns-resize;
+    background:radial-gradient(circle at 35% 30%,#2A3B4E,#141E2A 65%,#0A0F16);
+    border:1px solid #2A3B4E;box-shadow:0 2px 5px rgba(0,0,0,.5);touch-action:none}
+  .knob i{position:absolute;left:calc(50% - 1px);top:2px;width:2px;height:11px;
+    background:var(--ice);border-radius:1px;transform-origin:1px 15px;
+    box-shadow:0 0 4px rgba(127,212,232,.7)}
+  .kn label{font-size:8px;letter-spacing:.06em;color:var(--dim);
+    text-transform:uppercase;margin-top:3px;text-align:center;line-height:1.1}
+  .kn output{font-size:8px;color:var(--ice);margin-top:1px;white-space:nowrap}
+  .knob:focus-visible{outline:2px solid var(--ice);outline-offset:2px}
+
+  /* ---------- sequencer ---------- */
+  .seqwrap{width:100%;max-width:1060px;padding:6px 12px 0}
+  .seq{background:var(--panel);border:1px solid var(--edge);border-radius:5px;padding:8px}
+  .seq h2{font-family:'Fjalla One',sans-serif;font-size:10px;letter-spacing:.22em;
+    color:var(--dim);margin-bottom:6px;border-bottom:1px solid var(--edge);padding-bottom:4px}
+  .seqctl{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:6px}
+  .seqctl button{background:transparent;color:var(--frost);border:1px solid var(--edge);
+    border-radius:3px;font:inherit;font-size:10px;padding:5px 12px;cursor:pointer;letter-spacing:.1em}
+  .seqctl button.on{background:var(--ice);color:var(--night);border-color:var(--ice)}
+  .seqctl button#seqKaamos.on{background:var(--aurora);border-color:var(--aurora)}
+  .seqctl label{display:flex;align-items:center;gap:5px;color:var(--dim);font-size:9px}
+  .seqctl input[type=range]{width:80px;accent-color:var(--ice)}
+  .seqctl output{color:var(--ice);font-size:9px;min-width:24px}
+  #seqSteps{display:grid;grid-auto-flow:column;
+    grid-auto-columns:minmax(42px,1fr);gap:3px;overflow-x:auto;padding-bottom:2px}
+  .step{display:flex;flex-direction:column;gap:3px}
+  .step select{width:100%;font-size:9px;padding:1px}
+  .step .gate{height:20px;border-radius:3px;border:1px solid var(--edge);
+    background:var(--night);cursor:pointer}
+  .step .gate.on{background:var(--ice);border-color:var(--ice)}
+  .step.playing .gate{box-shadow:0 0 8px var(--aurora);border-color:var(--aurora)}
+
+  /* ---------- keyboard ---------- */
+  .kbwrap{width:100%;max-width:1060px;padding:6px 12px 14px}
+  .kbctl{display:flex;justify-content:space-between;align-items:center;
+    margin-bottom:4px;color:var(--dim);font-size:9px;letter-spacing:.08em}
+  .kbctl .oct button{background:transparent;border:1px solid var(--edge);
+    color:var(--frost);font:inherit;padding:2px 9px;border-radius:3px;cursor:pointer}
+  #kb{display:flex;position:relative;height:110px;user-select:none;touch-action:none}
+  @media (pointer:coarse){
+    #kb{height:210px}
+    .key .kh{font-size:10px;bottom:6px}
+    .knob{width:40px;height:40px}
+    .knob i{transform-origin:1px 18px;height:13px}
+    .kn{width:56px}
+  }
+  .key{flex:1;background:linear-gradient(180deg,#E7EEF4,#C9D7E2);
+    border:1px solid #0A0F16;border-radius:0 0 3px 3px;position:relative}
+  .key.black{position:absolute;width:6%;height:60%;z-index:2;
+    background:linear-gradient(180deg,#16202C,#0A0F16);
+    border:1px solid #000;border-radius:0 0 3px 3px}
+  .key.held{background:var(--ice)!important}
+  .key .kh{position:absolute;bottom:3px;left:0;right:0;text-align:center;
+    font-size:8px;color:#5A6B7C;pointer-events:none}
+  .key.black .kh{color:var(--dim)}
+
+  footer{color:var(--dim);font-size:9px;letter-spacing:.08em;
+    padding:0 12px 16px;text-align:center;max-width:1060px}
+  #midiled{color:var(--edge)} #midiled.on{color:var(--aurora)}
+
+  /* ---------- phone ---------- */
+  .mod.closed .knrow,.mod.closed .btnrow{display:none}
+  @media (max-width:600px){
+    header{padding:8px 8px 2px;gap:8px}
+    .title h1{font-size:20px}
+    #scope{height:40px}
+    main{padding:0 8px;gap:4px;
+      display:grid;grid-template-columns:1fr 1fr}
+    .mod{padding:6px 5px 4px}
+    .mod h2{font-size:9px;margin-bottom:4px;cursor:pointer}
+    .mod h2::after{content:' ▾';color:var(--edge)}
+    .mod.closed h2::after{content:' ▸'}
+    .knrow{flex-wrap:wrap;gap:1px}
+    .kn{width:44px}
+    .knob{width:32px;height:32px}
+    .knob i{transform-origin:1px 14px;height:10px}
+    .seqwrap{padding:4px 8px 0}
+    .kbwrap{position:sticky;bottom:0;z-index:10;
+      background:var(--night);padding:4px 8px 10px;
+      box-shadow:0 -8px 16px rgba(10,15,22,.9)}
+    #kb{height:150px}
+    footer{padding-bottom:8px}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="title"><h1>ROUTA</h1><p>WINTER SYNTH</p></div>
+  <canvas id="scope" width="1400" height="112"></canvas>
+  <div class="badge">v0.5.3</div>
+  <div id="masterSlot"></div>
+  <button id="power" aria-label="Power on audio engine">POWER</button>
+</header>
+
+<div class="presets">
+  <span>PRESETS</span>
+  <button data-preset="routa">Routa</button>
+  <button data-preset="kaamos">Kaamos</button>
+  <button data-preset="revontuli">Revontuli</button>
+  <button data-preset="huurre">Huurre</button>
+  <button class="io" id="exportBtn">Export JSON</button>
+  <button class="io" id="importBtn">Import JSON</button>
+</div>
+
+<main id="panel"></main>
+
+<section class="seqwrap">
+  <div class="seq">
+    <h2>SEQUENCER</h2>
+    <div class="seqctl">
+      <button id="seqPlay" aria-label="Play or stop sequence">▶ PLAY</button>
+      <button id="seqKaamos" aria-label="Generative kaamos mode">KAAMOS</button>
+      <label>BPM <input id="seqBpm" type="range" min="40" max="160" step="1" value="92"><output id="seqBpmOut">92</output></label>
+      <label>GATE <input id="seqGate" type="range" min="10" max="95" step="1" value="60"><output id="seqGateOut">60%</output></label>
+      <label>ROOT <select id="seqRoot"></select></label>
+      <label>SCALE <select id="seqScale"></select></label>
+      <button id="seqRand">RANDOM</button>
+    </div>
+    <div id="seqSteps"></div>
+  </div>
+</section>
+
+<div class="kbwrap">
+  <div class="kbctl">
+    <div>KEYS: Z + Q ROWS · <span id="midiled">● MIDI</span></div>
+    <div class="oct">OCTAVE
+      <button id="octDown" aria-label="Octave down">−</button>
+      <b id="octLbl">3</b>
+      <button id="octUp" aria-label="Octave up">+</button>
+    </div>
+  </div>
+  <div id="kb" role="application" aria-label="Keyboard"></div>
+</div>
+
+<footer>ROUTA v0.5.3 · 8-voice · knobs: drag up/down, Shift = fine, double click = reset · audio starts from POWER or first touch</footer>
+
+<script>
+'use strict';
+/* ================= PARAMS ================= */
+const P = {
+  osc1wave:'sawtooth', osc1oct:0,  osc1lvl:0.5,
+  osc2wave:'triangle', osc2oct:-1, osc2det:7, osc2lvl:0.4,
+  noise:0.03,
+  cutoff:1800, reso:2.0,
+  fAmt:2400, fAtk:0.05, fDec:0.8,
+  lfoRate:0.35, lfoDepth:600, lfoTarget:'filter',
+  atk:0.08, dec:0.4, sus:0.65, rel:1.2,
+  dlyTime:0.42, dlyFb:0.38, dlyMix:0.22,
+  rvSize:2.8, rvDecay:3.5, rvMix:0.35,
+  drive:0.12, driveTone:6000,
+  chRate:0.6, chDepth:0.5, chFb:0, chMix:0.3,
+  eqLow:0, eqHigh:0,
+  master:0.7
+};
+const DEFAULTS={...P};
+const PRESETS = {
+  routa:{...P},
+  kaamos:{...P, osc1wave:'sine', osc2wave:'sine', osc2oct:-2, osc2det:3,
+    noise:0.06, cutoff:700, reso:1.2, lfoRate:0.12, lfoDepth:900,
+    fAmt:1800, fAtk:2.5, fDec:2.0, drive:0.08, chMix:0.45, chRate:0.25,
+    atk:1.8, dec:1.0, sus:0.8, rel:3.5, dlyMix:0.1, rvSize:4, rvDecay:6, rvMix:0.55},
+  revontuli:{...P, osc1wave:'triangle', osc2wave:'sawtooth', osc2oct:0, osc2det:12,
+    cutoff:3200, reso:4, lfoRate:0.8, lfoDepth:1400, lfoTarget:'pitch',
+    fAmt:2000,
+    atk:0.4, dec:0.6, sus:0.5, rel:2.2, dlyTime:0.55, dlyFb:0.5, dlyMix:0.35, rvMix:0.4},
+  huurre:{...P, osc1wave:'square', osc1oct:1, osc1lvl:0.35, osc2wave:'square',
+    osc2oct:0, osc2det:-9, osc2lvl:0.3, noise:0.12, cutoff:1200, reso:6,
+    fAmt:4800, fAtk:0.003, fDec:0.22, drive:0.45, driveTone:4500, chMix:0.12,
+    atk:0.005, dec:0.25, sus:0.2, rel:0.6, dlyTime:0.3, dlyFb:0.45, dlyMix:0.3,
+    rvSize:1.5, rvDecay:2, rvMix:0.25}
+};
+
+/* ================= ENGINE ================= */
+let ctx=null, master, analyser, bus, dryG,
+    dlySend, dly, dlyFbG, dlyWet,
+    rvSend, conv, rvWet,
+    lfo, lfoFiltG, lfoPitchG,
+    shaper, toneLP,
+    chLfo, chDL, chDR, chGL, chGR, chFbL, chFbR, chWet,
+    eqLo, eqHi, comp;
+const voices = new Map();
+const MAXV = 8;
+let bendC=0;
+
+function driveCurve(a){
+  const n=1024, c=new Float32Array(n), k=a*60;
+  for(let i=0;i<n;i++){
+    const x=i/(n-1)*2-1;
+    c[i]=k?(1+k)*x/(1+k*Math.abs(x)):x;
+  }
+  return c;
+}
+
+function boot(){
+  if(ctx){ if(ctx.state==='suspended') ctx.resume(); return; }
+  ctx = new (window.AudioContext||window.webkitAudioContext)();
+
+  master = ctx.createGain(); master.gain.value = P.master;
+  analyser = ctx.createAnalyser(); analyser.fftSize = 2048;
+  master.connect(analyser).connect(ctx.destination);
+
+  bus = ctx.createGain(); bus.gain.value=1;
+
+  // drive: waveshaper + tone lowpass
+  shaper = ctx.createWaveShaper();
+  shaper.curve = driveCurve(P.drive); shaper.oversample='2x';
+  toneLP = ctx.createBiquadFilter(); toneLP.type='lowpass';
+  toneLP.frequency.value=P.driveTone; toneLP.Q.value=0.5;
+  bus.connect(shaper).connect(toneLP);
+
+  // chorus: kaksi moduloitua delaylinjaa L/R + feedback
+  const chIn = toneLP; // syöte
+  const chOut = ctx.createGain(); chOut.gain.value=1;
+  chIn.connect(chOut); // dry aina läpi
+  chDL = ctx.createDelay(0.1); chDL.delayTime.value=0.012;
+  chDR = ctx.createDelay(0.1); chDR.delayTime.value=0.017;
+  chIn.connect(chDL); chIn.connect(chDR);
+  chFbL = ctx.createGain(); chFbL.gain.value=P.chFb;
+  chFbR = ctx.createGain(); chFbR.gain.value=P.chFb;
+  chDL.connect(chFbL).connect(chDL);
+  chDR.connect(chFbR).connect(chDR);
+  chLfo = ctx.createOscillator(); chLfo.type='sine'; chLfo.frequency.value=P.chRate;
+  chGL = ctx.createGain(); chGL.gain.value=P.chDepth*0.004;
+  chGR = ctx.createGain(); chGR.gain.value=-P.chDepth*0.004; // vastavaihe leveyteen
+  chLfo.connect(chGL).connect(chDL.delayTime);
+  chLfo.connect(chGR).connect(chDR.delayTime);
+  chLfo.start();
+  const chMerge = ctx.createChannelMerger(2);
+  chDL.connect(chMerge,0,0); chDR.connect(chMerge,0,1);
+  chWet = ctx.createGain(); chWet.gain.value=P.chMix;
+  chMerge.connect(chWet).connect(chOut);
+
+  // master EQ + kompressori
+  eqLo = ctx.createBiquadFilter(); eqLo.type='lowshelf';
+  eqLo.frequency.value=250; eqLo.gain.value=P.eqLow;
+  eqHi = ctx.createBiquadFilter(); eqHi.type='highshelf';
+  eqHi.frequency.value=4000; eqHi.gain.value=P.eqHigh;
+  comp = ctx.createDynamicsCompressor();
+  comp.threshold.value=-18; comp.knee.value=12; comp.ratio.value=3;
+  comp.attack.value=0.01; comp.release.value=0.25;
+  eqLo.connect(eqHi).connect(comp).connect(master);
+
+  dryG = ctx.createGain(); dryG.gain.value=1;
+  chOut.connect(dryG).connect(eqLo);
+
+  dlySend = ctx.createGain(); dlySend.gain.value=P.dlyMix;
+  dly = ctx.createDelay(2); dly.delayTime.value=P.dlyTime;
+  dlyFbG = ctx.createGain(); dlyFbG.gain.value=P.dlyFb;
+  dlyWet = ctx.createGain(); dlyWet.gain.value=1;
+  chOut.connect(dlySend).connect(dly);
+  dly.connect(dlyFbG).connect(dly);
+  dly.connect(dlyWet).connect(eqLo);
+
+  rvSend = ctx.createGain(); rvSend.gain.value=P.rvMix;
+  conv = ctx.createConvolver(); conv.buffer = makeIR(P.rvSize,P.rvDecay);
+  rvWet = ctx.createGain(); rvWet.gain.value=1;
+  chOut.connect(rvSend).connect(conv);
+  conv.connect(rvWet).connect(eqLo);
+
+  lfo = ctx.createOscillator(); lfo.type='sine'; lfo.frequency.value=P.lfoRate;
+  lfoFiltG = ctx.createGain(); lfoPitchG = ctx.createGain();
+  lfo.connect(lfoFiltG); lfo.connect(lfoPitchG);
+  applyLfoTarget();
+  lfo.start();
+
+  document.getElementById('power').classList.add('on');
+  drawScope();
+}
+function applyLfoTarget(){
+  const f = P.lfoTarget==='filter';
+  lfoFiltG.gain.value  = f ? P.lfoDepth : 0;
+  lfoPitchG.gain.value = f ? 0 : P.lfoDepth*0.05;
+}
+function makeIR(sizeSec, decay){
+  const len = Math.max(1, ctx.sampleRate*sizeSec);
+  const buf = ctx.createBuffer(2, len, ctx.sampleRate);
+  for(let ch=0; ch<2; ch++){
+    const d = buf.getChannelData(ch);
+    for(let i=0;i<len;i++) d[i]=(Math.random()*2-1)*Math.pow(1-i/len,decay);
+  }
+  return buf;
+}
+let noiseBuf=null;
+function getNoise(){
+  if(noiseBuf) return noiseBuf;
+  noiseBuf = ctx.createBuffer(1, ctx.sampleRate*2, ctx.sampleRate);
+  const d = noiseBuf.getChannelData(0);
+  for(let i=0;i<d.length;i++) d[i]=Math.random()*2-1;
+  return noiseBuf;
+}
+const mtof = m => 440*Math.pow(2,(m-69)/12);
+
+function noteOn(midi, vel=1, at=null){
+  if(!ctx) boot();
+  if(ctx.state==='suspended') ctx.resume();
+  if(voices.has(midi)) noteOff(midi,true);
+  if(voices.size>=MAXV){ const oldest=voices.keys().next().value; noteOff(oldest,true); }
+
+  const t=at??ctx.currentTime, f=mtof(midi);
+  const vGain=ctx.createGain(); vGain.gain.value=0;
+
+  const vf=ctx.createBiquadFilter(); vf.type='lowpass';
+  vf.frequency.value=P.cutoff; vf.Q.value=P.reso;
+  lfoFiltG.connect(vf.detune);
+  vf.detune.setValueAtTime(0,t);
+  vf.detune.setTargetAtTime(P.fAmt, t, Math.max(0.003,P.fAtk/3));
+  vf.detune.setTargetAtTime(0, t+P.fAtk, Math.max(0.01,P.fDec/3));
+  vGain.connect(vf).connect(bus);
+
+  const mk=(wave,oct,det,lvl)=>{
+    const o=ctx.createOscillator(); o.type=wave;
+    o.frequency.value=f*Math.pow(2,oct); o.detune.value=det+bendC;
+    o._baseDet=det;
+    const g=ctx.createGain(); g.gain.value=lvl;
+    o.connect(g).connect(vGain);
+    lfoPitchG.connect(o.detune);
+    o.start(t); return o;
+  };
+  const o1=mk(P.osc1wave,P.osc1oct,0,P.osc1lvl);
+  const o2=mk(P.osc2wave,P.osc2oct,P.osc2det,P.osc2lvl);
+  const n=ctx.createBufferSource(); n.buffer=getNoise(); n.loop=true;
+  const ng=ctx.createGain(); ng.gain.value=P.noise;
+  n.connect(ng).connect(vGain); n.start(t);
+
+  const peak=0.32*vel;
+  vGain.gain.cancelScheduledValues(t);
+  vGain.gain.setTargetAtTime(peak, t, Math.max(0.003,P.atk/3));
+  vGain.gain.setTargetAtTime(peak*P.sus, t+P.atk, Math.max(0.01,P.dec/3));
+
+  voices.set(midi,{o1,o2,n,vGain,vf});
+  keyEl(midi)?.classList.add('held');
+}
+function noteOff(midi, steal=false, at=null){
+  const v=voices.get(midi); if(!v) return;
+  voices.delete(midi);
+  keyEl(midi)?.classList.remove('held');
+  const t=at??ctx.currentTime, tc=steal?0.02:Math.max(0.02,P.rel/3);
+  v.vGain.gain.cancelScheduledValues(t);
+  v.vGain.gain.setTargetAtTime(0, t, tc);
+  const stop=t+(steal?0.1:P.rel+0.5);
+  v.o1.stop(stop); v.o2.stop(stop); v.n.stop(stop);
+  setTimeout(()=>{try{v.vGain.disconnect();v.vf.disconnect();lfoFiltG.disconnect(v.vf.detune)}catch(e){}}, (stop-ctx.currentTime)*1000+100);
+}
+
+/* ================= UI: KNOBS + MODULES ================= */
+const WAVES=['sine','triangle','sawtooth','square'];
+const WICONS={
+  sine:'<svg width="18" height="12" viewBox="0 0 18 12"><path d="M1 6 Q4.5 0 9 6 T17 6"/></svg>',
+  triangle:'<svg width="18" height="12" viewBox="0 0 18 12"><path d="M1 10 L6 2 L11 10 L16 2"/></svg>',
+  sawtooth:'<svg width="18" height="12" viewBox="0 0 18 12"><path d="M1 10 L8 2 L8 10 L16 2"/></svg>',
+  square:'<svg width="18" height="12" viewBox="0 0 18 12"><path d="M1 10 L1 2 L8 2 L8 10 L16 10 L16 2"/></svg>'
+};
+const defs=[
+ {t:'OSC 1',btns:[{k:'osc1wave',opts:WAVES,icons:WICONS}],kn:[
+   {k:'osc1oct',l:'octave',min:-2,max:2,st:1,fmt:v=>(v>0?'+':'')+v},
+   {k:'osc1lvl',l:'level',min:0,max:1}]},
+ {t:'OSC 2 / NOISE',btns:[{k:'osc2wave',opts:WAVES,icons:WICONS}],kn:[
+   {k:'osc2oct',l:'octave',min:-2,max:2,st:1,fmt:v=>(v>0?'+':'')+v},
+   {k:'osc2det',l:'detune',min:-50,max:50,st:1,fmt:v=>Math.round(v)+'c'},
+   {k:'osc2lvl',l:'level',min:0,max:1},
+   {k:'noise',l:'noise',min:0,max:0.5}]},
+ {t:'FILTER',kn:[
+   {k:'cutoff',l:'cutoff',min:60,max:12000,log:true,fmt:v=>v<1000?Math.round(v)+'Hz':(v/1000).toFixed(1)+'k'},
+   {k:'reso',l:'reso',min:0.1,max:18},
+   {k:'fAmt',l:'env amt',min:0,max:7200,fmt:v=>Math.round(v)+'c'},
+   {k:'fAtk',l:'env atk',min:0.002,max:4,log:true,fmt:v=>v.toFixed(2)+'s'},
+   {k:'fDec',l:'env dec',min:0.02,max:6,log:true,fmt:v=>v.toFixed(2)+'s'}]},
+ {t:'LFO',btns:[{k:'lfoTarget',opts:['filter','pitch'],labels:{filter:'FILT',pitch:'PITCH'}}],kn:[
+   {k:'lfoRate',l:'rate',min:0.02,max:12,log:true,fmt:v=>v.toFixed(2)+'Hz'},
+   {k:'lfoDepth',l:'depth',min:0,max:3000,fmt:v=>Math.round(v)}]},
+ {t:'AMP ENV',kn:[
+   {k:'atk',l:'attack',min:0.002,max:4,log:true,fmt:v=>v.toFixed(2)+'s'},
+   {k:'dec',l:'decay',min:0.02,max:4,log:true,fmt:v=>v.toFixed(2)+'s'},
+   {k:'sus',l:'sustain',min:0,max:1},
+   {k:'rel',l:'release',min:0.05,max:8,log:true,fmt:v=>v.toFixed(2)+'s'}]},
+ {t:'DRIVE',kn:[
+   {k:'drive',l:'amount',min:0,max:1},
+   {k:'driveTone',l:'tone',min:500,max:12000,log:true,fmt:v=>v<1000?Math.round(v)+'Hz':(v/1000).toFixed(1)+'k'}]},
+ {t:'CHORUS',kn:[
+   {k:'chRate',l:'rate',min:0.05,max:6,log:true,fmt:v=>v.toFixed(2)+'Hz'},
+   {k:'chDepth',l:'depth',min:0,max:1},
+   {k:'chFb',l:'feedback',min:0,max:0.85},
+   {k:'chMix',l:'mix',min:0,max:1}]},
+ {t:'DELAY',kn:[
+   {k:'dlyTime',l:'time',min:0.03,max:1.5,fmt:v=>v.toFixed(2)+'s'},
+   {k:'dlyFb',l:'feedback',min:0,max:0.9},
+   {k:'dlyMix',l:'mix',min:0,max:1}]},
+ {t:'REVERB',kn:[
+   {k:'rvSize',l:'size',min:0.3,max:6,fmt:v=>v.toFixed(1)+'s'},
+   {k:'rvDecay',l:'decay',min:0.5,max:8},
+   {k:'rvMix',l:'mix',min:0,max:1}]}
+];
+const ctrls={};
+
+function makeKnob(c){
+  const wrap=document.createElement('div'); wrap.className='kn';
+  const kb=document.createElement('div'); kb.className='knob';
+  kb.tabIndex=0; kb.setAttribute('role','slider');
+  kb.setAttribute('aria-label',c.l);
+  const ind=document.createElement('i'); kb.appendChild(ind);
+  const lab=document.createElement('label'); lab.textContent=c.l;
+  const out=document.createElement('output');
+  wrap.appendChild(kb); wrap.appendChild(lab); wrap.appendChild(out);
+
+  const toS = c.log ? Math.log : v=>v;
+  const frS = c.log ? Math.exp : v=>v;
+  const lo=toS(c.min), hi=toS(c.max);
+  const fmt=v=>c.fmt?c.fmt(v):(+v).toFixed(2).replace(/\.?0+$/,'')||'0';
+
+  function render(){
+    const norm=(toS(P[c.k])-lo)/(hi-lo);
+    ind.style.transform=`rotate(${-135+norm*270}deg)`;
+    out.textContent=fmt(P[c.k]);
+    kb.setAttribute('aria-valuetext',fmt(P[c.k]));
+  }
+  function setNorm(norm){
+    norm=Math.min(1,Math.max(0,norm));
+    let v=frS(lo+norm*(hi-lo));
+    if(c.st) v=Math.round(v/c.st)*c.st;
+    P[c.k]=v; render(); applyParam(c.k);
+  }
+  let dragY=null, dragNorm=0;
+  kb.addEventListener('pointerdown',e=>{
+    e.preventDefault(); kb.setPointerCapture(e.pointerId);
+    dragY=e.clientY; dragNorm=(toS(P[c.k])-lo)/(hi-lo);
+  });
+  kb.addEventListener('pointermove',e=>{
+    if(dragY==null)return;
+    const scale=e.shiftKey?1200:200; // px per full range
+    setNorm(dragNorm+(dragY-e.clientY)/scale);
+  });
+  kb.addEventListener('pointerup',()=>dragY=null);
+  kb.addEventListener('pointercancel',()=>dragY=null);
+  kb.addEventListener('dblclick',()=>{P[c.k]=DEFAULTS[c.k];render();applyParam(c.k);});
+  kb.addEventListener('keydown',e=>{
+    const step=(e.shiftKey?0.005:0.03);
+    if(e.key==='ArrowUp'||e.key==='ArrowRight'){e.preventDefault();setNorm((toS(P[c.k])-lo)/(hi-lo)+step);}
+    if(e.key==='ArrowDown'||e.key==='ArrowLeft'){e.preventDefault();setNorm((toS(P[c.k])-lo)/(hi-lo)-step);}
+  });
+  render();
+  ctrls[c.k]={set:v=>{P[c.k]=v;render();}};
+  return wrap;
+}
+function buildPanel(){
+  const main=document.getElementById('panel');
+  for(const m of defs){
+    const el=document.createElement('section'); el.className='mod';
+    el.innerHTML=`<h2>${m.t}</h2>`;
+    el.querySelector('h2').addEventListener('click',()=>{
+      if(window.matchMedia('(max-width:600px)').matches) el.classList.toggle('closed');
+    });
+    if(m.btns){
+      for(const bc of m.btns){
+        const br=document.createElement('div'); br.className='btnrow';
+        const btnEls={};
+        for(const o of bc.opts){
+          const b=document.createElement('button'); b.className='wbtn';
+          b.type='button'; b.setAttribute('aria-label',o);
+          b.innerHTML=bc.icons?bc.icons[o]:(bc.labels?.[o]||o);
+          if(P[bc.k]===o) b.classList.add('on');
+          b.addEventListener('click',()=>{
+            P[bc.k]=o; applyParam(bc.k);
+            for(const k2 in btnEls) btnEls[k2].classList.toggle('on',k2===o);
+          });
+          btnEls[o]=b; br.appendChild(b);
+        }
+        el.appendChild(br);
+        ctrls[bc.k]={set:v=>{for(const k2 in btnEls) btnEls[k2].classList.toggle('on',k2===v);}};
+      }
+    }
+    const row=document.createElement('div'); row.className='knrow';
+    for(const c of (m.kn||[])) row.appendChild(makeKnob(c));
+    el.appendChild(row);
+    main.appendChild(el);
+  }
+  // output-sektio headerissa: EQ + master (vrt. Massive)
+  const slot=document.getElementById('masterSlot');
+  slot.appendChild(makeKnob({k:'eqLow',l:'low',min:-12,max:12,fmt:v=>(v>0?'+':'')+v.toFixed(1)+'dB'}));
+  slot.appendChild(makeKnob({k:'eqHigh',l:'high',min:-12,max:12,fmt:v=>(v>0?'+':'')+v.toFixed(1)+'dB'}));
+  slot.appendChild(makeKnob({k:'master',l:'master',min:0,max:1}));
+}
+function applyParam(k){
+  if(!ctx) return;
+  const t=ctx.currentTime;
+  switch(k){
+    case 'cutoff': voices.forEach(v=>v.vf.frequency.setTargetAtTime(P.cutoff,t,0.02)); break;
+    case 'reso': voices.forEach(v=>v.vf.Q.setTargetAtTime(P.reso,t,0.02)); break;
+    case 'lfoRate': lfo.frequency.setTargetAtTime(P.lfoRate,t,0.05); break;
+    case 'lfoDepth': case 'lfoTarget': applyLfoTarget(); break;
+    case 'dlyTime': dly.delayTime.setTargetAtTime(P.dlyTime,t,0.1); break;
+    case 'dlyFb': dlyFbG.gain.setTargetAtTime(P.dlyFb,t,0.02); break;
+    case 'dlyMix': dlySend.gain.setTargetAtTime(P.dlyMix,t,0.02); break;
+    case 'rvSize': case 'rvDecay': conv.buffer=makeIR(P.rvSize,P.rvDecay); break;
+    case 'rvMix': rvSend.gain.setTargetAtTime(P.rvMix,t,0.02); break;
+    case 'drive': shaper.curve=driveCurve(P.drive); break;
+    case 'driveTone': toneLP.frequency.setTargetAtTime(P.driveTone,t,0.02); break;
+    case 'chRate': chLfo.frequency.setTargetAtTime(P.chRate,t,0.05); break;
+    case 'chDepth': chGL.gain.value=P.chDepth*0.004; chGR.gain.value=-P.chDepth*0.004; break;
+    case 'chFb': chFbL.gain.setTargetAtTime(P.chFb,t,0.02); chFbR.gain.setTargetAtTime(P.chFb,t,0.02); break;
+    case 'chMix': chWet.gain.setTargetAtTime(P.chMix,t,0.02); break;
+    case 'eqLow': eqLo.gain.setTargetAtTime(P.eqLow,t,0.02); break;
+    case 'eqHigh': eqHi.gain.setTargetAtTime(P.eqHigh,t,0.02); break;
+    case 'master': master.gain.setTargetAtTime(P.master,t,0.02); break;
+  }
+}
+function loadPreset(obj){
+  Object.assign(P,obj);
+  for(const k in ctrls) ctrls[k].set(P[k]);
+  if(ctx) for(const k of ['cutoff','reso','lfoRate','lfoTarget','dlyTime','dlyFb','dlyMix','rvSize','rvMix','drive','driveTone','chRate','chDepth','chFb','chMix','eqLow','eqHigh','master']) applyParam(k);
+}
+
+/* ================= KEYBOARD ================= */
+let baseOct=3;
+const WHITE=[0,2,4,5,7,9,11], BLACK={1:0,3:1,6:3,8:4,10:5};
+const QWERTY={z:0,s:1,x:2,d:3,c:4,v:5,g:6,b:7,h:8,n:9,j:10,m:11,
+              q:12,2:13,w:14,3:15,e:16,r:17,5:18,t:19,6:20,y:21,7:22,u:23,i:24};
+function keyEl(midi){ return document.querySelector(`[data-midi="${midi}"]`); }
+function buildKb(){
+  const kb=document.getElementById('kb'); kb.innerHTML='';
+  const base=(baseOct+1)*12;
+  const whites=[];
+  for(let o=0;o<2;o++) for(const s of WHITE) whites.push(base+o*12+s);
+  whites.push(base+24);
+  for(const m of whites){
+    const k=document.createElement('div'); k.className='key'; k.dataset.midi=m;
+    kb.appendChild(k);
+  }
+  const kw=100/whites.length;
+  for(let o=0;o<2;o++) for(const s in BLACK){
+    const m=base+o*12+ +s;
+    const k=document.createElement('div'); k.className='key black'; k.dataset.midi=m;
+    k.style.left=((o*7+BLACK[s])*kw + kw*0.68)+'%';
+    kb.appendChild(k);
+  }
+  for(const ch in QWERTY){
+    const el=keyEl(base+QWERTY[ch]);
+    if(el && !el.querySelector('.kh')){
+      const h=document.createElement('span'); h.className='kh';
+      h.textContent=ch.toUpperCase(); el.appendChild(h);
+    }
+  }
+}
+function kbPointer(){
+  const kb=document.getElementById('kb');
+  const active=new Map();
+  const hit=(x,y)=>{
+    const el=document.elementFromPoint(x,y);
+    return el?.dataset?.midi ? +el.dataset.midi : null;
+  };
+  kb.addEventListener('pointerdown',e=>{
+    e.preventDefault(); boot();
+    const m=hit(e.clientX,e.clientY); if(m==null)return;
+    active.set(e.pointerId,m); noteOn(m);
+    kb.setPointerCapture(e.pointerId);
+  });
+  kb.addEventListener('pointermove',e=>{
+    if(!active.has(e.pointerId))return;
+    const m=hit(e.clientX,e.clientY), prev=active.get(e.pointerId);
+    if(m!=null && m!==prev){ noteOff(prev); active.set(e.pointerId,m); noteOn(m); }
+  });
+  const up=e=>{
+    if(!active.has(e.pointerId))return;
+    noteOff(active.get(e.pointerId)); active.delete(e.pointerId);
+  };
+  kb.addEventListener('pointerup',up);
+  kb.addEventListener('pointercancel',up);
+}
+const heldKeys=new Set();
+window.addEventListener('keydown',e=>{
+  if(e.repeat||e.target.tagName==='SELECT'||e.target.tagName==='INPUT')return;
+  const k=e.key.toLowerCase();
+  if(k in QWERTY){ boot(); const m=(baseOct+1)*12+QWERTY[k];
+    heldKeys.add(k); noteOn(m); }
+  if(k==='arrowdown'&&document.activeElement?.className!=='knob')shiftOct(-1);
+  if(k==='arrowup'&&document.activeElement?.className!=='knob')shiftOct(1);
+});
+window.addEventListener('keyup',e=>{
+  const k=e.key.toLowerCase();
+  if(heldKeys.has(k)){ heldKeys.delete(k); noteOff((baseOct+1)*12+QWERTY[k]); }
+});
+function shiftOct(d){
+  baseOct=Math.min(6,Math.max(0,baseOct+d));
+  document.getElementById('octLbl').textContent=baseOct;
+  buildKb();
+}
+document.getElementById('octDown').addEventListener('click',()=>shiftOct(-1));
+document.getElementById('octUp').addEventListener('click',()=>shiftOct(1));
+
+/* ================= MIDI ================= */
+if(navigator.requestMIDIAccess){
+  navigator.requestMIDIAccess().then(acc=>{
+    const led=document.getElementById('midiled');
+    const wire=()=>{ let any=false;
+      for(const inp of acc.inputs.values()){ any=true;
+        inp.onmidimessage=msg=>{
+          const [st,d1,d2]=msg.data, cmd=st&0xF0;
+          if(cmd===0x90 && d2>0){ boot(); noteOn(d1,d2/127); }
+          else if(cmd===0x80 || (cmd===0x90&&d2===0)) noteOff(d1);
+          else if(cmd===0xB0 && d1===1){
+            P.lfoDepth=d2/127*3000; ctrls.lfoDepth?.set(P.lfoDepth);
+            if(ctx) applyLfoTarget();
+          }
+          else if(cmd===0xE0){
+            bendC=(((d2<<7)|d1)-8192)/8192*200;
+            if(ctx){ const t=ctx.currentTime;
+              voices.forEach(v=>{
+                v.o1.detune.setTargetAtTime(v.o1._baseDet+bendC,t,0.01);
+                v.o2.detune.setTargetAtTime(v.o2._baseDet+bendC,t,0.01);
+              });
+            }
+          }
+        };
+      }
+      led.classList.toggle('on',any);
+    };
+    wire(); acc.onstatechange=wire;
+  }).catch(()=>{});
+}
+
+/* ================= SCOPE ================= */
+function drawScope(){
+  const cv=document.getElementById('scope'), g=cv.getContext('2d');
+  const data=new Uint8Array(analyser.fftSize);
+  const grad=g.createLinearGradient(0,0,cv.width,0);
+  grad.addColorStop(0,'#63B98C'); grad.addColorStop(0.5,'#7FD4E8'); grad.addColorStop(1,'#8FA8E8');
+  (function frame(){
+    requestAnimationFrame(frame);
+    analyser.getByteTimeDomainData(data);
+    g.fillStyle='rgba(10,15,22,0.28)'; g.fillRect(0,0,cv.width,cv.height);
+    g.lineWidth=2; g.strokeStyle=grad;
+    g.shadowColor='rgba(127,212,232,0.6)'; g.shadowBlur=10;
+    g.beginPath();
+    const mid=cv.height/2, step=cv.width/data.length;
+    for(let i=0;i<data.length;i++){
+      const y=mid+(data[i]-128)/128*mid*0.85;
+      i?g.lineTo(i*step,y):g.moveTo(0,y);
+    }
+    g.stroke(); g.shadowBlur=0;
+  })();
+}
+
+/* ================= SEQUENCER ================= */
+const NOTEN=['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const SCALES={
+  aeolian:[0,2,3,5,7,8,10],
+  dorian:[0,2,3,5,7,9,10],
+  phrygian:[0,1,3,5,7,8,10],
+  'minor penta':[0,3,5,7,10]
+};
+const NDEG=15;
+const seq={
+  playing:false, kaamos:false, bpm:92, gate:0.6,
+  root:9, scale:'aeolian',
+  steps:Array.from({length:16},(_,i)=>({deg:[0,2,4,3,0,5,4,2,0,2,7,5,4,2,1,0][i], on:i%2===0}))
+};
+let seqNextT=0, seqIdx=0, seqTimer=null, kaamosDeg=7;
+
+function degToMidi(deg){
+  const sc=SCALES[seq.scale];
+  return 36+seq.root + Math.floor(deg/sc.length)*12 + sc[deg%sc.length];
+}
+function degName(deg){
+  const m=degToMidi(deg);
+  return NOTEN[m%12]+(Math.floor(m/12)-1);
+}
+function stepDur(){ return 60/seq.bpm/2; }
+
+function playStep(i,t){
+  let deg=null;
+  if(seq.kaamos){
+    if(Math.random()<0.4){
+      kaamosDeg=Math.min(NDEG-1,Math.max(0,kaamosDeg+[-2,-1,-1,1,1,2][Math.floor(Math.random()*6)]));
+      deg=kaamosDeg;
+    }
+  }else{
+    const s=seq.steps[i];
+    if(s.on) deg=s.deg;
+  }
+  if(deg!=null){
+    const m=degToMidi(deg);
+    const dur=stepDur()*(seq.kaamos?2.5:seq.gate);
+    noteOn(m,0.9,t);
+    noteOff(m,false,t+dur);
+  }
+  const wait=(t-ctx.currentTime)*1000;
+  setTimeout(()=>{
+    document.querySelectorAll('.step').forEach((el,j)=>el.classList.toggle('playing',j===i&&!seq.kaamos));
+  },Math.max(0,wait));
+}
+function seqSchedule(){
+  while(seqNextT<ctx.currentTime+0.12){
+    playStep(seqIdx,seqNextT);
+    seqIdx=(seqIdx+1)%16;
+    seqNextT+=stepDur()*(seq.kaamos?2:1);
+  }
+}
+function seqStart(){
+  boot();
+  seq.playing=true; seqIdx=0; seqNextT=ctx.currentTime+0.06;
+  seqTimer=setInterval(seqSchedule,30);
+  document.getElementById('seqPlay').classList.add('on');
+  document.getElementById('seqPlay').textContent='■ STOP';
+}
+function seqStop(){
+  seq.playing=false; clearInterval(seqTimer);
+  document.getElementById('seqPlay').classList.remove('on');
+  document.getElementById('seqPlay').textContent='▶ PLAY';
+  document.querySelectorAll('.step.playing').forEach(el=>el.classList.remove('playing'));
+}
+function buildSeqUI(){
+  const rootSel=document.getElementById('seqRoot');
+  NOTEN.forEach((n,i)=>{const o=document.createElement('option');o.value=i;o.textContent=n;rootSel.appendChild(o);});
+  rootSel.value=seq.root;
+  rootSel.addEventListener('change',()=>{seq.root=+rootSel.value; refreshStepSelects();});
+
+  const scSel=document.getElementById('seqScale');
+  Object.keys(SCALES).forEach(k=>{const o=document.createElement('option');o.value=k;o.textContent=k;scSel.appendChild(o);});
+  scSel.value=seq.scale;
+  scSel.addEventListener('change',()=>{seq.scale=scSel.value; refreshStepSelects();});
+
+  const bpm=document.getElementById('seqBpm'), bpmOut=document.getElementById('seqBpmOut');
+  bpm.addEventListener('input',()=>{seq.bpm=+bpm.value; bpmOut.textContent=bpm.value;});
+  const gate=document.getElementById('seqGate'), gateOut=document.getElementById('seqGateOut');
+  gate.addEventListener('input',()=>{seq.gate=+gate.value/100; gateOut.textContent=gate.value+'%';});
+
+  const wrap=document.getElementById('seqSteps');
+  seq.steps.forEach((s,i)=>{
+    const el=document.createElement('div'); el.className='step';
+    const sel=document.createElement('select');
+    for(let d=NDEG-1;d>=0;d--){const o=document.createElement('option');o.value=d;o.textContent=degName(d);sel.appendChild(o);}
+    sel.value=s.deg;
+    sel.addEventListener('change',()=>s.deg=+sel.value);
+    const g=document.createElement('button'); g.className='gate'+(s.on?' on':'');
+    g.setAttribute('aria-label','Step '+(i+1)+' on/off');
+    g.addEventListener('click',()=>{s.on=!s.on; g.classList.toggle('on',s.on);});
+    el.appendChild(sel); el.appendChild(g); wrap.appendChild(el);
+  });
+
+  document.getElementById('seqPlay').addEventListener('click',()=>seq.playing?seqStop():seqStart());
+  document.getElementById('seqKaamos').addEventListener('click',e=>{
+    seq.kaamos=!seq.kaamos; e.target.classList.toggle('on',seq.kaamos);
+    if(seq.kaamos&&!seq.playing)seqStart();
+  });
+  document.getElementById('seqRand').addEventListener('click',()=>{
+    seq.steps.forEach(s=>{
+      s.deg=Math.floor(Math.random()*10);
+      s.on=Math.random()<0.65;
+    });
+    refreshStepSelects(true);
+  });
+}
+function refreshStepSelects(setVals=false){
+  document.querySelectorAll('.step').forEach((el,i)=>{
+    const sel=el.querySelector('select');
+    [...sel.options].forEach(o=>o.textContent=degName(+o.value));
+    if(setVals){sel.value=seq.steps[i].deg;
+      el.querySelector('.gate').classList.toggle('on',seq.steps[i].on);}
+  });
+}
+
+/* ================= PRESET IO ================= */
+document.querySelectorAll('[data-preset]').forEach(b=>
+  b.addEventListener('click',()=>loadPreset(PRESETS[b.dataset.preset])));
+document.getElementById('exportBtn').addEventListener('click',()=>{
+  const blob=new Blob([JSON.stringify(P,null,2)],{type:'application/json'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download='routa-preset.json'; a.click(); URL.revokeObjectURL(a.href);
+});
+document.getElementById('importBtn').addEventListener('click',()=>{
+  const inp=document.createElement('input'); inp.type='file'; inp.accept='.json,application/json';
+  inp.onchange=()=>{ const f=inp.files[0]; if(!f)return;
+    f.text().then(t=>{ try{ loadPreset(JSON.parse(t)); }catch(e){ alert('Invalid JSON: '+e.message); } });
+  };
+  inp.click();
+});
+
+/* ================= INIT ================= */
+document.getElementById('power').addEventListener('click',boot);
+buildPanel(); buildKb(); kbPointer(); buildSeqUI();
+</script>
+</body>
+</html>

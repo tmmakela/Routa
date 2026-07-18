@@ -6,7 +6,7 @@
 <title>ROUTA — winter synth</title>
 <!--
   ============================================================
-  ROUTA v0.6.0 — Jääportit-style browser synth
+  ROUTA v0.6.1 — Jääportit-style browser synth
   ============================================================
   HANDOFF (read first in a new session):
 
@@ -93,6 +93,16 @@
     singing), Ukko (wide stack), Viima (piercing) +
     Pakkanen. To add a preset: add to PRESETS then list it
     under a LIBRARY category.
+  v0.6.1 LIBRARY VISUAL REDESIGN
+  - Preset library is now a framed panel (.preslib) with a
+    header (dot + PRESET LIBRARY title + EXPORT/IMPORT) and
+    a subtle top-left radial glow. Each category is a row:
+    a colour-coded accent bar (--acc-lead/bass/pad/keys set
+    per row via --cat) + label + count, then wrapping chips
+    (.pchip) with a left accent stripe that lights on hover
+    and a coloured glow when active. CAT_ACCENT maps
+    category -> var. Layout: .catrow grid 82px|1fr, chips
+    flex-wrap, so it stays compact and reflows on mobile.
 
   NEXT (ideas)
   - Glide/portamento, unison detune
@@ -107,6 +117,8 @@
     --night:#0A0F16; --panel:#101823; --panel2:#0C131D;
     --edge:#1C2938; --frost:#C9D7E2; --dim:#6E8296;
     --ice:#7FD4E8; --aurora:#63B98C;
+    --acc-lead:#7FD4E8; --acc-bass:#63B98C;
+    --acc-pad:#9D8CE0;  --acc-keys:#79C7C0;
   }
   *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{background:var(--night);color:var(--frost);
@@ -128,20 +140,47 @@
   #power.on{color:var(--night);background:var(--ice)}
   #masterSlot{display:flex;gap:0}
 
-  /* ---------- preset bar ---------- */
-  .presets{width:100%;max-width:1060px;padding:2px 12px 6px;
-    display:flex;flex-wrap:wrap;gap:6px;align-items:center}
-  .presets span{color:var(--dim);font-size:9px;letter-spacing:.18em}
-  .presets button{background:transparent;color:var(--frost);
-    border:1px solid var(--edge);border-radius:3px;
-    font:inherit;font-size:10px;padding:4px 10px;cursor:pointer}
-  .presets button:hover{border-color:var(--ice);color:var(--ice)}
-  .presets button.on{border-color:var(--ice);color:var(--ice);
-    box-shadow:0 0 6px rgba(127,212,232,.25) inset}
-  .presets button.io{color:var(--dim)}
-  .lib{display:contents}
-  .catlbl{flex-basis:100%;color:var(--aurora)!important;font-size:8px;
-    letter-spacing:.24em;margin-top:3px;opacity:.85}
+  /* ---------- preset library ---------- */
+  .presets{width:100%;max-width:1060px;padding:4px 12px 8px}
+  .preslib{background:linear-gradient(180deg,#0F1721,#0B1119);
+    border:1px solid var(--edge);border-radius:6px;
+    padding:10px 12px 11px;position:relative;overflow:hidden}
+  .preslib::before{content:'';position:absolute;inset:0;pointer-events:none;
+    background:radial-gradient(120% 90% at 8% -20%,rgba(127,212,232,.05),transparent 55%)}
+  .preshead{display:flex;justify-content:space-between;align-items:center;
+    margin-bottom:9px;padding-bottom:7px;border-bottom:1px solid var(--edge);
+    position:relative}
+  .preshead h2{font-family:'Fjalla One',sans-serif;font-size:12px;
+    letter-spacing:.3em;color:var(--frost);display:flex;align-items:center;gap:8px}
+  .preshead h2::before{content:'';width:6px;height:6px;border-radius:50%;
+    background:var(--ice);box-shadow:0 0 8px var(--ice)}
+  .presio{display:flex;gap:6px}
+  .io{background:transparent;color:var(--dim);border:1px solid var(--edge);
+    border-radius:3px;font:inherit;font-size:9px;letter-spacing:.12em;
+    padding:5px 11px;cursor:pointer;transition:color .12s,border-color .12s}
+  .io:hover{border-color:var(--ice);color:var(--ice)}
+  .lib{display:flex;flex-direction:column;gap:7px;position:relative}
+  .catrow{display:grid;grid-template-columns:82px 1fr;gap:12px;align-items:start}
+  .cathd{display:flex;align-items:center;gap:7px;min-height:28px;padding-top:1px}
+  .cathd .bar{width:3px;align-self:stretch;min-height:16px;border-radius:2px;
+    background:var(--cat);box-shadow:0 0 7px -1px var(--cat)}
+  .cathd .nm{font-size:9px;letter-spacing:.2em;color:var(--cat);font-weight:500}
+  .cathd .cnt{font-size:8px;color:var(--dim);opacity:.55;margin-left:1px}
+  .catchips{display:flex;flex-wrap:wrap;gap:5px}
+  .pchip{position:relative;overflow:hidden;
+    background:linear-gradient(180deg,#131E2A,#0C131D);
+    border:1px solid var(--edge);border-radius:4px;color:var(--frost);
+    font:inherit;font-size:10px;letter-spacing:.03em;padding:6px 12px;
+    cursor:pointer;transition:transform .08s,border-color .12s,box-shadow .14s,color .12s}
+  .pchip::after{content:'';position:absolute;left:0;top:0;bottom:0;width:2px;
+    background:var(--cat);opacity:0;transition:opacity .12s}
+  .pchip:hover{border-color:var(--cat);transform:translateY(-1px);color:#EAF3F8}
+  .pchip:hover::after{opacity:.45}
+  .pchip.on{border-color:var(--cat);color:#fff;
+    background:linear-gradient(180deg,#182635,#101B27);
+    box-shadow:0 0 14px -3px var(--cat),inset 0 1px 0 rgba(255,255,255,.04)}
+  .pchip.on::after{opacity:1;box-shadow:0 0 8px var(--cat)}
+  .pchip:focus-visible{outline:2px solid var(--cat);outline-offset:1px}
 
   /* ---------- panel / modules ---------- */
   main{width:100%;max-width:1060px;padding:0 12px;
@@ -256,16 +295,22 @@
 <header>
   <div class="title"><h1>ROUTA</h1><p>WINTER SYNTH</p></div>
   <canvas id="scope" width="1400" height="112"></canvas>
-  <div class="badge">v0.6.0</div>
+  <div class="badge">v0.6.1</div>
   <div id="masterSlot"></div>
   <button id="power" aria-label="Power on audio engine">POWER</button>
 </header>
 
 <div class="presets">
-  <span>PRESETS</span>
-  <span id="presetLib" class="lib"></span>
-  <button class="io" id="exportBtn">Export JSON</button>
-  <button class="io" id="importBtn">Import JSON</button>
+  <div class="preslib">
+    <div class="preshead">
+      <h2>PRESET LIBRARY</h2>
+      <div class="presio">
+        <button class="io" id="exportBtn">↧ EXPORT</button>
+        <button class="io" id="importBtn">↥ IMPORT</button>
+      </div>
+    </div>
+    <div id="presetLib" class="lib"></div>
+  </div>
 </div>
 
 <main id="panel"></main>
@@ -298,7 +343,7 @@
   <div id="kb" role="application" aria-label="Keyboard"></div>
 </div>
 
-<footer>ROUTA v0.6.0 · 8-voice · knobs: drag up/down, Shift = fine, double click = reset · audio starts from POWER or first touch</footer>
+<footer>ROUTA v0.6.1 · 8-voice · knobs: drag up/down, Shift = fine, double click = reset · audio starts from POWER or first touch</footer>
 
 <script>
 'use strict';
@@ -1039,22 +1084,29 @@ function refreshStepSelects(setVals=false){
 }
 
 /* ================= PRESET-KIRJASTO UI ================= */
+const CAT_ACCENT={LEADS:'var(--acc-lead)', BASS:'var(--acc-bass)',
+                  PAD:'var(--acc-pad)',   KEYS:'var(--acc-keys)'};
 function buildPresetBar(){
   const lib=document.getElementById('presetLib');
   lib.innerHTML='';
   LIBRARY.forEach(group=>{
-    const lbl=document.createElement('span'); lbl.className='catlbl';
-    lbl.textContent=group.cat; lib.appendChild(lbl);
+    const row=document.createElement('div'); row.className='catrow';
+    row.style.setProperty('--cat', CAT_ACCENT[group.cat]||'var(--ice)');
+    const hd=document.createElement('div'); hd.className='cathd';
+    hd.innerHTML=`<span class="bar"></span><span class="nm">${group.cat}</span>`+
+                 `<span class="cnt">${group.items.length}</span>`;
+    const chips=document.createElement('div'); chips.className='catchips';
     group.items.forEach(it=>{
       const b=document.createElement('button');
-      b.textContent=it.name; b.dataset.preset=it.id;
+      b.className='pchip'; b.textContent=it.name; b.dataset.preset=it.id;
       b.addEventListener('click',()=>{
         loadPreset(PRESETS[it.id]);
-        lib.querySelectorAll('button').forEach(x=>x.classList.remove('on'));
+        lib.querySelectorAll('.pchip').forEach(x=>x.classList.remove('on'));
         b.classList.add('on');
       });
-      lib.appendChild(b);
+      chips.appendChild(b);
     });
+    row.appendChild(hd); row.appendChild(chips); lib.appendChild(row);
   });
 }
 document.getElementById('exportBtn').addEventListener('click',()=>{

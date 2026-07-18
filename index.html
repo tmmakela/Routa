@@ -6,7 +6,7 @@
 <title>ROUTA — winter synth</title>
 <!--
   ============================================================
-  ROUTA v0.5.4 — Jääportit-style browser synth
+  ROUTA v0.6.0 — Jääportit-style browser synth
   ============================================================
   HANDOFF (read first in a new session):
 
@@ -79,6 +79,20 @@
     Pakkanen (lead w/ LFO->pitch vibrato). Preset objects
     still just spread {...P} and override; buttons added
     to the .presets bar.
+  v0.6.0 PRESET LIBRARY
+  - Presets reorganised into a categorised library (LEADS,
+    BASS, PAD, KEYS). PRESETS stays a flat id->params map;
+    LIBRARY[] holds {cat, items:[{id,name}]} metadata and
+    buildPresetBar() renders the .presets bar from it
+    (.lib = display:contents so buttons join the flex row,
+    .catlbl = flex-basis:100% row breaks per category).
+    Active preset gets .on highlight.
+  - LEADS library added: Tulikettu (detune-saw), Terä
+    (cutting saw+sq), Sisu (PWM square+drive), Kaiku
+    (dreamy delay), Loitsu (vibrato square), Hehku (warm
+    singing), Ukko (wide stack), Viima (piercing) +
+    Pakkanen. To add a preset: add to PRESETS then list it
+    under a LIBRARY category.
 
   NEXT (ideas)
   - Glide/portamento, unison detune
@@ -122,7 +136,12 @@
     border:1px solid var(--edge);border-radius:3px;
     font:inherit;font-size:10px;padding:4px 10px;cursor:pointer}
   .presets button:hover{border-color:var(--ice);color:var(--ice)}
+  .presets button.on{border-color:var(--ice);color:var(--ice);
+    box-shadow:0 0 6px rgba(127,212,232,.25) inset}
   .presets button.io{color:var(--dim)}
+  .lib{display:contents}
+  .catlbl{flex-basis:100%;color:var(--aurora)!important;font-size:8px;
+    letter-spacing:.24em;margin-top:3px;opacity:.85}
 
   /* ---------- panel / modules ---------- */
   main{width:100%;max-width:1060px;padding:0 12px;
@@ -237,22 +256,14 @@
 <header>
   <div class="title"><h1>ROUTA</h1><p>WINTER SYNTH</p></div>
   <canvas id="scope" width="1400" height="112"></canvas>
-  <div class="badge">v0.5.3</div>
+  <div class="badge">v0.6.0</div>
   <div id="masterSlot"></div>
   <button id="power" aria-label="Power on audio engine">POWER</button>
 </header>
 
 <div class="presets">
   <span>PRESETS</span>
-  <button data-preset="routa">Routa</button>
-  <button data-preset="kaamos">Kaamos</button>
-  <button data-preset="revontuli">Revontuli</button>
-  <button data-preset="huurre">Huurre</button>
-  <button data-preset="halla">Halla</button>
-  <button data-preset="ahma">Ahma</button>
-  <button data-preset="tunturi">Tunturi</button>
-  <button data-preset="kide">Kide</button>
-  <button data-preset="pakkanen">Pakkanen</button>
+  <span id="presetLib" class="lib"></span>
   <button class="io" id="exportBtn">Export JSON</button>
   <button class="io" id="importBtn">Import JSON</button>
 </div>
@@ -287,7 +298,7 @@
   <div id="kb" role="application" aria-label="Keyboard"></div>
 </div>
 
-<footer>ROUTA v0.5.4 · 8-voice · knobs: drag up/down, Shift = fine, double click = reset · audio starts from POWER or first touch</footer>
+<footer>ROUTA v0.6.0 · 8-voice · knobs: drag up/down, Shift = fine, double click = reset · audio starts from POWER or first touch</footer>
 
 <script>
 'use strict';
@@ -358,8 +369,86 @@ const PRESETS = {
     cutoff:2200, reso:4.5, fAmt:2400, fAtk:0.01, fDec:0.5,
     lfoRate:5.5, lfoDepth:120, lfoTarget:'pitch', atk:0.01, dec:0.3, sus:0.7, rel:0.5,
     drive:0.25, chMix:0.15, dlyTime:0.33, dlyFb:0.4, dlyMix:0.28,
-    rvSize:2, rvDecay:2.5, rvMix:0.3}
+    rvSize:2, rvDecay:2.5, rvMix:0.3},
+
+  /* ============================================================
+     LEAD-KIRJASTO — soolo-/melodiaäänet. Yhteinen resepti:
+     korkea sustain (pitkät nuotit soivat), kirkas cutoff,
+     kohtalainen reso, delay tilaan. Osa käyttää LFO->pitch
+     vibratoa (aina päällä, siksi maltillinen depth).
+     ============================================================ */
+  // Tulikettu: klassinen detune-saha trance-lead, leveä + delay
+  tulikettu:{...P, osc1wave:'sawtooth', osc1oct:0, osc1lvl:0.5,
+    osc2wave:'sawtooth', osc2oct:0, osc2det:12, osc2lvl:0.45, noise:0.01,
+    cutoff:3200, reso:3.5, fAmt:1800, fAtk:0.02, fDec:0.5,
+    lfoRate:0.3, lfoDepth:300, lfoTarget:'filter', atk:0.02, dec:0.3, sus:0.8, rel:0.5,
+    drive:0.18, driveTone:6500, chRate:0.5, chDepth:0.4, chMix:0.2,
+    dlyTime:0.32, dlyFb:0.42, dlyMix:0.26, rvSize:2, rvDecay:2.5, rvMix:0.28},
+  // Terä: terävä leikkaava saha+square, korkea reso, aggressiivinen
+  tera:{...P, osc1wave:'sawtooth', osc1oct:0, osc1lvl:0.5,
+    osc2wave:'square', osc2oct:0, osc2det:-7, osc2lvl:0.4, noise:0.01,
+    cutoff:2600, reso:6, fAmt:2600, fAtk:0.008, fDec:0.35,
+    lfoRate:0.3, lfoDepth:200, lfoTarget:'filter', atk:0.006, dec:0.25, sus:0.75, rel:0.4,
+    drive:0.3, driveTone:5000, chMix:0.12,
+    dlyTime:0.3, dlyFb:0.4, dlyMix:0.24, rvSize:1.8, rvDecay:2, rvMix:0.22},
+  // Sisu: rohkea square PWM-henkinen lead + reilu drive
+  sisu:{...P, osc1wave:'square', osc1oct:0, osc1lvl:0.5,
+    osc2wave:'square', osc2oct:0, osc2det:4, osc2lvl:0.35, noise:0,
+    cutoff:2200, reso:4, fAmt:2000, fAtk:0.01, fDec:0.5,
+    lfoRate:0.25, lfoDepth:250, lfoTarget:'filter', atk:0.01, dec:0.3, sus:0.8, rel:0.45,
+    drive:0.35, driveTone:4500, chRate:0.4, chDepth:0.5, chMix:0.18,
+    dlyTime:0.33, dlyFb:0.38, dlyMix:0.22, rvSize:1.6, rvDecay:2, rvMix:0.2},
+  // Kaiku: unelmoiva delay-vetoinen lead, kolmio+sini, pehmeä
+  kaiku:{...P, osc1wave:'triangle', osc1oct:0, osc1lvl:0.5,
+    osc2wave:'sine', osc2oct:1, osc2det:2, osc2lvl:0.3, noise:0,
+    cutoff:3400, reso:2.5, fAmt:1500, fAtk:0.05, fDec:0.8,
+    lfoRate:5, lfoDepth:90, lfoTarget:'pitch', atk:0.04, dec:0.4, sus:0.75, rel:1.4,
+    chMix:0.2, dlyTime:0.5, dlyFb:0.52, dlyMix:0.4, rvSize:3, rvDecay:4, rvMix:0.45},
+  // Loitsu: ontto nasaali square-lead ilmeikkäällä vibratolla
+  loitsu:{...P, osc1wave:'square', osc1oct:0, osc1lvl:0.45,
+    osc2wave:'triangle', osc2oct:0, osc2det:-12, osc2lvl:0.35, noise:0,
+    cutoff:2000, reso:5, fAmt:2200, fAtk:0.02, fDec:0.6,
+    lfoRate:5.5, lfoDepth:140, lfoTarget:'pitch', atk:0.02, dec:0.35, sus:0.7, rel:0.6,
+    drive:0.15, chMix:0.1, dlyTime:0.36, dlyFb:0.42, dlyMix:0.28,
+    rvSize:2.4, rvDecay:3, rvMix:0.35},
+  // Hehku: lämmin laulava saha/kolmio-lead, pyöreä
+  hehku:{...P, osc1wave:'sawtooth', osc1oct:0, osc1lvl:0.45,
+    osc2wave:'triangle', osc2oct:0, osc2det:5, osc2lvl:0.4, noise:0,
+    cutoff:2400, reso:3, fAmt:1600, fAtk:0.04, fDec:0.7,
+    lfoRate:4.5, lfoDepth:80, lfoTarget:'pitch', atk:0.03, dec:0.4, sus:0.85, rel:1.0,
+    drive:0.12, driveTone:5500, chRate:0.45, chDepth:0.5, chMix:0.22,
+    dlyTime:0.4, dlyFb:0.4, dlyMix:0.25, rvSize:2.6, rvDecay:3.2, rvMix:0.35},
+  // Ukko: iso voimakas leveä detune-sahastack-lead
+  ukko:{...P, osc1wave:'sawtooth', osc1oct:0, osc1lvl:0.5,
+    osc2wave:'sawtooth', osc2oct:0, osc2det:-14, osc2lvl:0.45, noise:0.01,
+    cutoff:3000, reso:3.5, fAmt:2000, fAtk:0.015, fDec:0.5,
+    lfoRate:0.3, lfoDepth:300, lfoTarget:'filter', atk:0.015, dec:0.35, sus:0.85, rel:0.7,
+    drive:0.25, driveTone:6000, chRate:0.35, chDepth:0.6, chFb:0.1, chMix:0.3,
+    dlyTime:0.42, dlyFb:0.45, dlyMix:0.28, rvSize:3, rvDecay:3.5, rvMix:0.38,
+    eqLow:2, eqHigh:3},
+  // Viima: ohut kirkas viiltävä lead, korkea cutoff + feedback-delay
+  viima:{...P, osc1wave:'sawtooth', osc1oct:0, osc1lvl:0.5,
+    osc2wave:'sawtooth', osc2oct:1, osc2det:7, osc2lvl:0.3, noise:0.02,
+    cutoff:4200, reso:5, fAmt:1800, fAtk:0.006, fDec:0.3,
+    lfoRate:0.4, lfoDepth:250, lfoTarget:'filter', atk:0.006, dec:0.2, sus:0.7, rel:0.35,
+    drive:0.4, driveTone:7000, chMix:0.1, dlyTime:0.28, dlyFb:0.5, dlyMix:0.3,
+    rvSize:1.5, rvDecay:1.8, rvMix:0.2, eqHigh:4}
 };
+
+/* ================= PRESET-KIRJASTO (kategoriat) ================= */
+const LIBRARY = [
+  {cat:'LEADS', items:[
+    {id:'tulikettu', name:'Tulikettu'}, {id:'tera', name:'Terä'},
+    {id:'sisu', name:'Sisu'}, {id:'kaiku', name:'Kaiku'},
+    {id:'loitsu', name:'Loitsu'}, {id:'hehku', name:'Hehku'},
+    {id:'ukko', name:'Ukko'}, {id:'viima', name:'Viima'},
+    {id:'pakkanen', name:'Pakkanen'} ]},
+  {cat:'BASS', items:[ {id:'ahma', name:'Ahma'} ]},
+  {cat:'PAD', items:[ {id:'routa', name:'Routa'}, {id:'kaamos', name:'Kaamos'},
+    {id:'revontuli', name:'Revontuli'}, {id:'tunturi', name:'Tunturi'} ]},
+  {cat:'KEYS', items:[ {id:'halla', name:'Halla'}, {id:'huurre', name:'Huurre'},
+    {id:'kide', name:'Kide'} ]}
+];
 
 /* ================= ENGINE ================= */
 let ctx=null, master, analyser, bus, dryG,
@@ -949,9 +1038,25 @@ function refreshStepSelects(setVals=false){
   });
 }
 
-/* ================= PRESET IO ================= */
-document.querySelectorAll('[data-preset]').forEach(b=>
-  b.addEventListener('click',()=>loadPreset(PRESETS[b.dataset.preset])));
+/* ================= PRESET-KIRJASTO UI ================= */
+function buildPresetBar(){
+  const lib=document.getElementById('presetLib');
+  lib.innerHTML='';
+  LIBRARY.forEach(group=>{
+    const lbl=document.createElement('span'); lbl.className='catlbl';
+    lbl.textContent=group.cat; lib.appendChild(lbl);
+    group.items.forEach(it=>{
+      const b=document.createElement('button');
+      b.textContent=it.name; b.dataset.preset=it.id;
+      b.addEventListener('click',()=>{
+        loadPreset(PRESETS[it.id]);
+        lib.querySelectorAll('button').forEach(x=>x.classList.remove('on'));
+        b.classList.add('on');
+      });
+      lib.appendChild(b);
+    });
+  });
+}
 document.getElementById('exportBtn').addEventListener('click',()=>{
   const blob=new Blob([JSON.stringify(P,null,2)],{type:'application/json'});
   const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
@@ -967,7 +1072,7 @@ document.getElementById('importBtn').addEventListener('click',()=>{
 
 /* ================= INIT ================= */
 document.getElementById('power').addEventListener('click',boot);
-buildPanel(); buildKb(); kbPointer(); buildSeqUI();
+buildPanel(); buildKb(); kbPointer(); buildSeqUI(); buildPresetBar();
 </script>
 </body>
 </html>
